@@ -480,6 +480,8 @@ h1 {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 .resume-toolbar-left p {
   font-size: 13px;
@@ -488,12 +490,19 @@ h1 {
 .resume-toolbar-right {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .resume-editor-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+@media (max-width: 900px) {
+  .resume-editor-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .editor-card {
   background: #fff;
@@ -501,6 +510,8 @@ h1 {
   border-radius: var(--radius);
   padding: 18px 20px;
   box-shadow: var(--shadow);
+  min-width: 0;
+  overflow: hidden;
 }
 .editor-card.full-col {
   grid-column: 1 / -1;
@@ -512,10 +523,27 @@ h1 {
   margin-bottom: 14px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--line);
+  gap: 10px;
 }
 .editor-card-head h3 {
   font-size: 15px;
   font-weight: 700;
+}
+.editor-card-head .btn-sm {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.editor-card-head .btn-sm:hover {
+  background: var(--primary);
+  color: #fff;
+  transform: translateY(-1px);
 }
 
 /* KV Container */
@@ -526,21 +554,34 @@ h1 {
 }
 .kv-row {
   display: grid;
-  grid-template-columns: 120px 1fr 32px;
+  grid-template-columns: 110px minmax(0, 1fr) 34px;
   gap: 8px;
   align-items: center;
+  width: 100%;
+}
+.kv-key, .kv-val {
+  width: 100%;
+  min-width: 0;
 }
 .kv-del-btn {
-  background: none;
-  border: none;
-  color: #94a3b8;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
   font-size: 14px;
-  padding: 4px;
-  border-radius: 4px;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
 }
 .kv-del-btn:hover {
-  color: var(--red);
-  background: var(--red-soft);
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #ef4444;
+  transform: scale(1.05);
 }
 
 /* Experiences Container */
@@ -557,24 +598,38 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 .exp-item-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
 }
 .exp-item-header h4 {
   font-size: 13px;
   font-weight: 700;
   color: var(--primary);
 }
+.exp-item-header .btn-danger {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+}
 .exp-fields-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 10px;
+  width: 100%;
 }
 .exp-fields-grid .full-w {
   grid-column: 1 / -1;
+}
+.exp-field {
+  width: 100%;
+  min-width: 0;
 }
 
 /* ================= TAB 3: 数据安全与备份 ================= */

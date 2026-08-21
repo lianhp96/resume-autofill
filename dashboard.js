@@ -499,7 +499,7 @@
         <div class="kv-row" data-section="${sec}">
           <input type="text" class="kv-key" value="${escapeHtml(k)}" placeholder="字段名称">
           <input type="text" class="kv-val" value="${escapeHtml(v)}" placeholder="内容值">
-          <button type="button" class="kv-del-btn" title="删除字段" onclick="this.closest('.kv-row').remove()">✕</button>
+          <button type="button" class="kv-del-btn" data-action="del-kv" title="删除字段">✕</button>
         </div>
       `).join('');
     });
@@ -514,7 +514,7 @@
           <div class="exp-item-header">
             <h4>#${idx + 1} ${escapeHtml(item._rowName || '经历')}</h4>
             <div>
-              <button type="button" class="btn-sm btn-danger" onclick="this.closest('.exp-item-card').remove()">删除此条</button>
+              <button type="button" class="btn-sm btn-danger" data-action="del-exp">删除此条</button>
             </div>
           </div>
           <div class="exp-fields-grid">
@@ -540,8 +540,8 @@
     });
   }
 
-  // 全局挂载添加 KV 字段函数
-  window.addKvField = function(sec) {
+  // 添加 KV 字段函数
+  function addKvField(sec) {
     const container = $(`#kv-${sec}`);
     if (!container) return;
     const row = document.createElement('div');
@@ -550,13 +550,15 @@
     row.innerHTML = `
       <input type="text" class="kv-key" placeholder="新字段名称">
       <input type="text" class="kv-val" placeholder="内容值">
-      <button type="button" class="kv-del-btn" title="删除字段" onclick="this.closest('.kv-row').remove()">✕</button>
+      <button type="button" class="kv-del-btn" data-action="del-kv" title="删除字段">✕</button>
     `;
     container.appendChild(row);
-  };
+    const keyInput = row.querySelector('.kv-key');
+    if (keyInput) keyInput.focus();
+  }
 
-  // 全局挂载添加经历行卡片
-  window.addExperienceRow = function(sec) {
+  // 添加经历行卡片函数
+  function addExperienceRow(sec) {
     const container = $(`#exp-${sec}`);
     if (!container) return;
     const card = document.createElement('div');
@@ -595,10 +597,12 @@
       ];
     }
 
+    const currentCount = container.querySelectorAll('.exp-item-card').length + 1;
+
     card.innerHTML = `
       <div class="exp-item-header">
-        <h4>新增经历</h4>
-        <button type="button" class="btn-sm btn-danger" onclick="this.closest('.exp-item-card').remove()">删除此条</button>
+        <h4>#${currentCount} 新增经历</h4>
+        <button type="button" class="btn-sm btn-danger" data-action="del-exp">删除此条</button>
       </div>
       <div class="exp-fields-grid">
         ${defaultFields.map(f => `
@@ -613,7 +617,54 @@
       </div>
     `;
     container.appendChild(card);
-  };
+    const firstInput = card.querySelector('.exp-field');
+    if (firstInput) firstInput.focus();
+  }
+
+  // 挂载到 window 供多场景访问
+  window.addKvField = addKvField;
+  window.addExperienceRow = addExperienceRow;
+
+  // 全局事件委托：绑定简历资料库全部动态按钮事件 (彻底规避 Chrome CSP 限制)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const sec = btn.getAttribute('data-section');
+
+    if (action === 'add-kv') {
+      e.preventDefault();
+      addKvField(sec);
+      showToast(`已在「${sec}」中添加新字段`);
+    } else if (action === 'add-exp') {
+      e.preventDefault();
+      addExperienceRow(sec);
+      showToast(`已在「${sec}」中添加新经历`);
+    } else if (action === 'del-kv') {
+      e.preventDefault();
+      const row = btn.closest('.kv-row');
+      if (row) {
+        row.remove();
+        showToast('已删除该字段');
+      }
+    } else if (action === 'del-exp') {
+      e.preventDefault();
+      const card = btn.closest('.exp-item-card');
+      if (card) {
+        const parent = card.parentElement;
+        card.remove();
+        // 重新排序标题编号
+        if (parent) {
+          parent.querySelectorAll('.exp-item-card').forEach((c, idx) => {
+            const h4 = c.querySelector('.exp-item-header h4');
+            const tag = c.querySelector('.exp-field[data-key="_rowName"]')?.value || '经历';
+            if (h4) h4.textContent = `#${idx + 1} ${tag}`;
+          });
+        }
+        showToast('已删除该段经历');
+      }
+    }
+  });
 
   // 从 DOM 收集并保存简历数据
   async function collectAndSaveResume() {

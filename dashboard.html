@@ -187,7 +187,7 @@
           <div class="editor-card" id="card-priority">
             <div class="editor-card-head">
               <h3>⭐ 优先信息 (常用高频字段)</h3>
-              <button class="btn-sm" onclick="addKvField('优先信息')">+ 添加字段</button>
+              <button type="button" class="btn-sm" data-action="add-kv" data-section="优先信息">+ 添加字段</button>
             </div>
             <div class="kv-container" id="kv-优先信息"></div>
           </div>
@@ -196,7 +196,7 @@
           <div class="editor-card" id="card-basic">
             <div class="editor-card-head">
               <h3>👤 基本信息</h3>
-              <button class="btn-sm" onclick="addKvField('基本信息')">+ 添加字段</button>
+              <button type="button" class="btn-sm" data-action="add-kv" data-section="基本信息">+ 添加字段</button>
             </div>
             <div class="kv-container" id="kv-基本信息"></div>
           </div>
@@ -205,7 +205,7 @@
           <div class="editor-card full-col" id="card-edu">
             <div class="editor-card-head">
               <h3>🎓 教育经历</h3>
-              <button class="btn-sm" onclick="addExperienceRow('教育经历')">+ 添加教育经历</button>
+              <button type="button" class="btn-sm" data-action="add-exp" data-section="教育经历">+ 添加教育经历</button>
             </div>
             <div class="exp-container" id="exp-教育经历"></div>
           </div>
@@ -214,7 +214,7 @@
           <div class="editor-card full-col" id="card-intern">
             <div class="editor-card-head">
               <h3>💼 实习经历</h3>
-              <button class="btn-sm" onclick="addExperienceRow('实习经历')">+ 添加实习经历</button>
+              <button type="button" class="btn-sm" data-action="add-exp" data-section="实习经历">+ 添加实习经历</button>
             </div>
             <div class="exp-container" id="exp-实习经历"></div>
           </div>
@@ -223,7 +223,7 @@
           <div class="editor-card full-col" id="card-project">
             <div class="editor-card-head">
               <h3>🚀 项目经历</h3>
-              <button class="btn-sm" onclick="addExperienceRow('项目经历')">+ 添加项目经历</button>
+              <button type="button" class="btn-sm" data-action="add-exp" data-section="项目经历">+ 添加项目经历</button>
             </div>
             <div class="exp-container" id="exp-项目经历"></div>
           </div>
@@ -232,7 +232,7 @@
           <div class="editor-card full-col" id="card-skills">
             <div class="editor-card-head">
               <h3>🏆 竞赛、论文与综合技能</h3>
-              <button class="btn-sm" onclick="addKvField('竞赛与技能')">+ 添加字段</button>
+              <button type="button" class="btn-sm" data-action="add-kv" data-section="竞赛与技能">+ 添加字段</button>
             </div>
             <div class="kv-container" id="kv-竞赛与技能"></div>
           </div>
@@ -396,9 +396,10 @@
   <!-- 全局 Toast 提示 -->
   <div class="toast" id="globalToast" role="status"></div>
 
-  <!-- 引入本地离线 OCR 引擎 -->
-  <script src="./ocr/tesseract.min.js"></script>
-  <script src="./ocr/chi_sim-data.js"></script>
+  <!-- 核心交互脚本优先加载 -->
   <script src="dashboard.js"></script>
+  <!-- 离线 OCR 引擎异步加载 -->
+  <script defer src="./ocr/tesseract.min.js"></script>
+  <script defer src="./ocr/chi_sim-data.js"></script>
 </body>
 </html>

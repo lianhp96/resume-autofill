@@ -1,0 +1,988 @@
+/**
+ * 秋招求职与简历中枢看板 - 核心业务逻辑
+ * 支持投递追踪、可视化简历库编辑、数据安全与离线 OCR 识别
+ */
+
+(() => {
+  'use strict';
+
+  // ================= 常量定义 =================
+  const STAGES = ['待投递', '已投递', '笔试', '一面', '二面', 'HR面', 'Offer', '已结束'];
+  const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
+  const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
+  const SAFETY_DB_NAME = 'autumnRecruitmentTracker.safety.v1';
+  const APP_VERSION = '2.0.0';
+
+  // 默认示例简历种子
+  const DEFAULT_RESUME = {
+    "优先信息": {
+      "身份证": "110101199801011234",
+      "手机": "13800138000",
+      "邮箱": "job_hunter@example.com",
+      "微信号": "wechat_demo",
+      "现居地": "北京市海淀区",
+      "求职意向": "AI产品经理 / 算法工程师"
+    },
+    "基本信息": {
+      "姓名": "李明",
+      "性别": "男",
+      "出生年月": "1999-06",
+      "政治面貌": "共青团员",
+      "籍贯": "山东省济南市",
+      "紧急联系人": "李华 (父子 13900139000)",
+      "自我评价": "具备扎实的AI技术认知与产品化落地经验，深度理解大语言模型、多智能体交互机制。自驱力强，跨部门沟通流畅，多次主导高校与工业级产学研项目。"
+    },
+    "教育经历": [
+      {
+        "_rowName": "硕士",
+        "学校": "浙江大学",
+        "学院": "计算机科学与技术学院",
+        "专业": "人工智能",
+        "学历": "硕士研究生",
+        "开始时间": "2023-09",
+        "结束时间": "2026-06",
+        "导师": "张教授",
+        "专业排名": "前 5%"
+      },
+      {
+        "_rowName": "本科",
+        "学校": "华东理工大学",
+        "学院": "信息科学与工程学院",
+        "专业": "软件工程",
+        "学历": "本科",
+        "开始时间": "2019-09",
+        "结束时间": "2023-06",
+        "GPA": "3.85 / 4.0",
+        "荣誉": "国家励志奖学金、校优秀毕业生"
+      }
+    ],
+    "实习经历": [
+      {
+        "_rowName": "字节跳动",
+        "单位": "北京字节跳动科技有限公司",
+        "部门": "商业化产品部",
+        "岗位": "AI产品经理实习生",
+        "开始": "2025-06",
+        "结束": "至今",
+        "证明人": "王主管",
+        "岗位职责": "1. 主导智能广告生成 Agent 方案设计，构建提示词工程与评估指标集；\n2. 协同算法团队完成模型微调与端到端延迟优化，CTR 提升 12.4%；\n3. 撰写多份高保真 PRD 与交互原型，推动敏捷迭代上线。"
+      }
+    ],
+    "项目经历": [
+      {
+        "_rowName": "Multi-Agent 仿真系统",
+        "项目名称": "基于大模型多智能体的自动化仿真与决策工作流平台",
+        "角色": "核心负责人",
+        "开始": "2024-09",
+        "结束": "2025-05",
+        "主要工作": "1. 设计认知层-技能层解耦架构，结合拓扑校验与动态 Prompt 编排实现手绘草图到工业仿真的端到端闭环；\n2. 提出基于质心的空间推理机制，弥合自然语言与抽象边界条件之间的语义差距；\n3. 投稿 SCI/EI 顶级期刊一篇 (Under Review)。",
+        "技术栈": "Python, LLM Agent, LangChain, Vue.js, FastAPI"
+      }
+    ],
+    "竞赛与技能": {
+      "英语水平": "CET-6 (598分) / 英语流利",
+      "专业技能": "Python, SQL, Figma, Axure, Prompt Engineering, Agent Architecture",
+      "学术竞赛": "全国大学生数学建模竞赛一等奖、互联网+大学生创新创业大赛银奖"
+    }
+  };
+
+  // 默认示例投递记录
+  function getExampleRecords() {
+    const now = Date.now();
+    return [
+      { id: cryptoId(), company: '腾讯科技', position: 'AI产品经理校招生', city: '深圳', applicationDate: new Date(now - 86400000 * 3).toISOString().slice(0, 10), stage: '一面', scheduleAt: new Date(now + 86400000 * 2).toISOString().slice(0, 16), recentSchedule: '腾讯会议专业面', nextAction: '复盘 Agent 架构项目经历，准备 3 分钟自我介绍', updatedAt: now - 3000 },
+      { id: cryptoId(), company: '字节跳动', position: '大模型应用产品经理', city: '北京', applicationDate: new Date(now - 86400000 * 8).toISOString().slice(0, 10), stage: '笔试', scheduleAt: new Date(now + 86400000 * 1).toISOString().slice(0, 16), recentSchedule: '在线专业笔试', nextAction: '复习产品分析案例与行测', updatedAt: now - 6000 },
+      { id: cryptoId(), company: '阿里巴巴', position: '算法工程师 (NLP/Agent)', city: '杭州', applicationDate: new Date(now - 86400000 * 12).toISOString().slice(0, 10), stage: '二面', scheduleAt: new Date(now + 86400000 * 4).toISOString().slice(0, 16), recentSchedule: '总监业务面', nextAction: '深入准备多物理场仿真论文讲解', updatedAt: now - 10000 },
+      { id: cryptoId(), company: '美团', position: '商业化产品经理', city: '北京', applicationDate: new Date(now - 86400000 * 20).toISOString().slice(0, 10), stage: 'Offer', scheduleAt: '', recentSchedule: '已发放录用意向书', nextAction: '确认薪资与入职时间', updatedAt: now - 15000 }
+    ];
+  }
+
+  // ================= 全局状态 =================
+  let records = [];
+  let currentResume = DEFAULT_RESUME;
+  let editingRecordId = null;
+  let ocrWorker = null;
+  let ocrFile = null;
+  let safetyDbPromise = null;
+
+  // ================= 辅助函数 =================
+  function $(selector) { return document.querySelector(selector); }
+  function $$(selector) { return document.querySelectorAll(selector); }
+
+  function cryptoId() {
+    return (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function showToast(msg) {
+    const toast = $('#globalToast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+
+  // ================= 统一存储适配层 =================
+  async function storageGet(key) {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      const res = await chrome.storage.local.get([key]);
+      return res[key];
+    }
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  }
+
+  async function storageSet(key, value) {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      await chrome.storage.local.set({ [key]: value });
+    } else {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+  }
+
+  // ================= IndexedDB 快照恢复系统 =================
+  function openSafetyDb() {
+    if (!('indexedDB' in window)) return Promise.reject(new Error('当前浏览器不支持快照'));
+    if (safetyDbPromise) return safetyDbPromise;
+    safetyDbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(SAFETY_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('snapshots')) db.createObjectStore('snapshots');
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('无法打开快照存储'));
+    });
+    return safetyDbPromise;
+  }
+
+  async function saveSnapshot(recordsData, resumeData) {
+    try {
+      const db = await openSafetyDb();
+      const snapshot = {
+        savedAt: new Date().toISOString(),
+        records: recordsData,
+        resume: resumeData
+      };
+      const key = `${snapshot.savedAt}-${cryptoId()}`;
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('snapshots', 'readwrite');
+        tx.objectStore('snapshots').put(snapshot, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      updateSnapshotCount();
+    } catch (e) {
+      console.warn('快照保存失败', e);
+    }
+  }
+
+  async function updateSnapshotCount() {
+    try {
+      const db = await openSafetyDb();
+      const count = await new Promise((resolve, reject) => {
+        const tx = db.transaction('snapshots', 'readonly');
+        const req = tx.objectStore('snapshots').count();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      $('#snapshotCountText').textContent = `已自动保留 ${count} 个历史快照`;
+    } catch (e) {
+      $('#snapshotCountText').textContent = '未开启快照';
+    }
+  }
+
+  // ================= 选项卡切换逻辑 =================
+  const tabs = {
+    'records-tab': { kicker: 'JOB TRACKING DASHBOARD', title: '投递追踪看板', subtitle: '全面监控网申进度、面试安排与全链路阶段流转', showActions: true },
+    'resume-tab': { kicker: 'RESUME PROFILE MANAGER', title: '我的简历资料库', subtitle: '集中维护个人信息与多段经历，实时同步至网页端快速填报', showActions: false },
+    'safety-tab': { kicker: 'LOCAL DATA & PRIVACY', title: '数据安全与备份', subtitle: '100% 浏览器本地存储保护，支持备份导出与快照回滚', showActions: false }
+  };
+
+  function switchTab(tabId) {
+    $$('.sidebar-nav .nav-item').forEach(item => {
+      if (item.getAttribute('data-tab') === tabId) item.classList.add('is-active');
+      else item.classList.remove('is-active');
+    });
+
+    $$('.tab-content').forEach(content => {
+      if (content.id === tabId) content.classList.add('is-active');
+      else content.classList.remove('is-active');
+    });
+
+    const info = tabs[tabId];
+    if (info) {
+      $('#tabKicker').textContent = info.kicker;
+      $('#tabTitle').textContent = info.title;
+      $('#tabSubtitle').textContent = info.subtitle;
+      $('#topActionsContainer').style.display = info.showActions ? 'flex' : 'none';
+    }
+  }
+
+  $$('.sidebar-nav .nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const target = item.getAttribute('data-tab');
+      switchTab(target);
+    });
+  });
+
+  // 处理 URL Hash
+  function handleUrlHash() {
+    const hash = location.hash;
+    if (hash === '#resume') switchTab('resume-tab');
+    else if (hash === '#safety') switchTab('safety-tab');
+    else switchTab('records-tab');
+  }
+  window.addEventListener('hashchange', handleUrlHash);
+
+  // ================= TAB 1: 投递追踪核心逻辑 =================
+  async function loadRecords() {
+    const saved = await storageGet(RECORDS_STORAGE_KEY);
+    if (Array.isArray(saved) && saved.length > 0) {
+      records = saved;
+    } else {
+      records = getExampleRecords();
+      await storageSet(RECORDS_STORAGE_KEY, records);
+    }
+    renderRecords();
+  }
+
+  async function saveRecords(msg) {
+    await storageSet(RECORDS_STORAGE_KEY, records);
+    saveSnapshot(records, currentResume);
+    renderRecords();
+    if (msg) showToast(msg);
+  }
+
+  function renderRecords() {
+    const searchVal = $('#searchInput').value.trim().toLowerCase();
+    const stageVal = $('#stageFilter').value;
+    const sortVal = $('#sortSelect').value;
+
+    // 过滤
+    let filtered = records.filter(r => {
+      if (stageVal && r.stage !== stageVal) return false;
+      if (searchVal) {
+        const text = `${r.company} ${r.position} ${r.city} ${r.nextAction} ${r.recentSchedule}`.toLowerCase();
+        if (!text.includes(searchVal)) return false;
+      }
+      return true;
+    });
+
+    // 排序
+    filtered.sort((a, b) => {
+      if (sortVal === 'updatedAt_desc') return (b.updatedAt || 0) - (a.updatedAt || 0);
+      if (sortVal === 'applicationDate_desc') return (b.applicationDate || '').localeCompare(a.applicationDate || '');
+      if (sortVal === 'applicationDate_asc') return (a.applicationDate || '').localeCompare(b.applicationDate || '');
+      if (sortVal === 'company_asc') return (a.company || '').localeCompare(b.company || '', 'zh-Hans-CN');
+      return 0;
+    });
+
+    // 渲染统计指标
+    $('#totalCount').textContent = records.length;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    $('#todayCount').textContent = records.filter(r => (r.applicationDate === todayStr || (r.updatedAt && new Date(r.updatedAt).toISOString().slice(0,10) === todayStr))).length;
+    $('#activeCount').textContent = records.filter(r => !['Offer', '已结束', '待投递'].includes(r.stage)).length;
+    $('#weekCount').textContent = records.filter(r => r.scheduleAt && new Date(r.scheduleAt) >= new Date()).length;
+    $('#offerCount').textContent = records.filter(r => r.stage === 'Offer').length;
+
+    // 渲染阶段漏斗
+    const pipelineEl = $('#stagePipeline');
+    pipelineEl.innerHTML = STAGES.map(stage => {
+      const count = records.filter(r => r.stage === stage).length;
+      const isSelected = stageVal === stage ? 'is-selected' : '';
+      return `
+        <div class="stage-pill ${isSelected}" data-stage="${stage}">
+          <span class="stage-pill-title">${stage}</span>
+          <span class="stage-pill-val">${count}</span>
+        </div>
+      `;
+    }).join('');
+
+    // 绑定漏斗点击筛选
+    pipelineEl.querySelectorAll('.stage-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const s = pill.getAttribute('data-stage');
+        $('#stageFilter').value = ($('#stageFilter').value === s) ? '' : s;
+        renderRecords();
+      });
+    });
+
+    // 渲染表格内容
+    const tbody = $('#recordsTbody');
+    const emptyEl = $('#recordsEmptyState');
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '';
+      emptyEl.classList.remove('hidden');
+    } else {
+      emptyEl.classList.add('hidden');
+      tbody.innerHTML = filtered.map(r => `
+        <tr>
+          <td>
+            <div class="comp-cell">
+              <span class="comp-name">${escapeHtml(r.company)}</span>
+              <span class="comp-pos">${escapeHtml(r.position)}</span>
+            </div>
+          </td>
+          <td>${escapeHtml(r.city || '-')}</td>
+          <td>${r.applicationDate || '-'}</td>
+          <td>
+            <span class="stage-tag stage-${r.stage}">${r.stage}</span>
+          </td>
+          <td>
+            <div>${escapeHtml(r.recentSchedule || '-')}</div>
+            ${r.nextAction ? `<div style="font-size:11px;color:var(--muted)">👉 ${escapeHtml(r.nextAction)}</div>` : ''}
+          </td>
+          <td class="text-right">
+            <div class="table-actions">
+              <button class="btn-sm btn-advance" data-id="${r.id}" title="推进到下一阶段">推进</button>
+              <button class="btn-sm btn-edit" data-id="${r.id}">编辑</button>
+              <button class="btn-sm btn-danger btn-del" data-id="${r.id}">删除</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // 渲染右侧近期待办列表
+    renderUpcoming();
+  }
+
+  function renderUpcoming() {
+    const listEl = $('#upcomingList');
+    const upcoming = records
+      .filter(r => r.scheduleAt && new Date(r.scheduleAt) >= new Date(Date.now() - 86400000))
+      .sort((a, b) => new Date(a.scheduleAt) - new Date(b.scheduleAt));
+
+    if (upcoming.length === 0) {
+      listEl.innerHTML = `<p style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0;">近期暂无日程安排</p>`;
+      return;
+    }
+
+    listEl.innerHTML = upcoming.slice(0, 5).map(r => `
+      <div class="schedule-item">
+        <span class="schedule-item-time">${r.scheduleAt.replace('T', ' ')}</span>
+        <span class="schedule-item-title">${escapeHtml(r.company)} · ${escapeHtml(r.recentSchedule || '日程')}</span>
+        ${r.nextAction ? `<span class="schedule-item-desc">${escapeHtml(r.nextAction)}</span>` : ''}
+      </div>
+    `).join('');
+  }
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // 搜索与过滤事件绑定
+  $('#searchInput').addEventListener('input', renderRecords);
+  $('#stageFilter').addEventListener('change', renderRecords);
+  $('#sortSelect').addEventListener('change', renderRecords);
+
+  // 表格操作委托
+  $('#recordsTbody').addEventListener('click', (e) => {
+    const id = e.target.getAttribute('data-id');
+    if (!id) return;
+
+    if (e.target.classList.contains('btn-advance')) {
+      advanceStage(id);
+    } else if (e.target.classList.contains('btn-edit')) {
+      openEditModal(id);
+    } else if (e.target.classList.contains('btn-del')) {
+      deleteRecord(id);
+    }
+  });
+
+  function advanceStage(id) {
+    const record = records.find(r => r.id === id);
+    if (!record) return;
+    const curIdx = STAGES.indexOf(record.stage);
+    if (curIdx >= 0 && curIdx < STAGES.length - 1) {
+      record.stage = STAGES[curIdx + 1];
+      record.updatedAt = Date.now();
+      saveRecords(`🚀 ${record.company} 阶段已推进至「${record.stage}」`);
+    }
+  }
+
+  function deleteRecord(id) {
+    const record = records.find(r => r.id === id);
+    if (!record) return;
+    if (confirm(`确定要删除 ${record.company} - ${record.position} 的投递记录吗？`)) {
+      records = records.filter(r => r.id !== id);
+      saveRecords('已删除投递记录');
+    }
+  }
+
+  // ================= 投递记录表单弹窗 =================
+  const recordModal = $('#recordModal');
+  $('#addRecordBtn').addEventListener('click', () => {
+    editingRecordId = null;
+    $('#modalTitle').textContent = '新增投递记录';
+    $('#editRecordId').value = '';
+    $('#m-company').value = '';
+    $('#m-position').value = '';
+    $('#m-city').value = '';
+    $('#m-date').value = new Date().toISOString().slice(0, 10);
+    $('#m-stage').value = '已投递';
+    $('#m-url').value = '';
+    $('#m-scheduleAt').value = '';
+    $('#m-recentSchedule').value = '';
+    $('#m-nextAction').value = '';
+    recordModal.showModal();
+  });
+
+  function openEditModal(id) {
+    const record = records.find(r => r.id === id);
+    if (!record) return;
+    editingRecordId = id;
+    $('#modalTitle').textContent = '编辑投递记录';
+    $('#editRecordId').value = id;
+    $('#m-company').value = record.company || '';
+    $('#m-position').value = record.position || '';
+    $('#m-city').value = record.city || '';
+    $('#m-date').value = record.applicationDate || '';
+    $('#m-stage').value = record.stage || '已投递';
+    $('#m-url').value = record.applicationUrl || '';
+    $('#m-scheduleAt').value = record.scheduleAt || '';
+    $('#m-recentSchedule').value = record.recentSchedule || '';
+    $('#m-nextAction').value = record.nextAction || '';
+    recordModal.showModal();
+  }
+
+  $('#closeModalBtn').addEventListener('click', () => recordModal.close());
+  $('#cancelModalBtn').addEventListener('click', () => recordModal.close());
+
+  $('#recordForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = {
+      company: $('#m-company').value.trim(),
+      position: $('#m-position').value.trim(),
+      city: $('#m-city').value.trim(),
+      applicationDate: $('#m-date').value,
+      stage: $('#m-stage').value,
+      applicationUrl: $('#m-url').value.trim(),
+      scheduleAt: $('#m-scheduleAt').value,
+      recentSchedule: $('#m-recentSchedule').value.trim(),
+      nextAction: $('#m-nextAction').value.trim(),
+      updatedAt: Date.now()
+    };
+
+    if (editingRecordId) {
+      const idx = records.findIndex(r => r.id === editingRecordId);
+      if (idx !== -1) {
+        records[idx] = { ...records[idx], ...data };
+      }
+    } else {
+      records.unshift({ id: cryptoId(), ...data });
+    }
+
+    recordModal.close();
+    saveRecords(editingRecordId ? '记录修改成功' : '新增记录成功');
+  });
+
+  // ================= TAB 2: 简历资料库管理核心逻辑 =================
+  async function loadResume() {
+    const saved = await storageGet(RESUME_STORAGE_KEY);
+    if (saved && typeof saved === 'object') {
+      currentResume = saved;
+    } else {
+      currentResume = DEFAULT_RESUME;
+      await storageSet(RESUME_STORAGE_KEY, currentResume);
+    }
+    renderResumeEditor();
+  }
+
+  function renderResumeEditor() {
+    // 渲染 KV 区域：优先信息、基本信息、竞赛与技能
+    ['优先信息', '基本信息', '竞赛与技能'].forEach(sec => {
+      const container = $(`#kv-${sec}`);
+      if (!container) return;
+      const data = currentResume[sec] || {};
+      container.innerHTML = Object.entries(data).map(([k, v]) => `
+        <div class="kv-row" data-section="${sec}">
+          <input type="text" class="kv-key" value="${escapeHtml(k)}" placeholder="字段名称">
+          <input type="text" class="kv-val" value="${escapeHtml(v)}" placeholder="内容值">
+          <button type="button" class="kv-del-btn" title="删除字段" onclick="this.closest('.kv-row').remove()">✕</button>
+        </div>
+      `).join('');
+    });
+
+    // 渲染经历列表：教育经历、实习经历、项目经历
+    ['教育经历', '实习经历', '项目经历'].forEach(sec => {
+      const container = $(`#exp-${sec}`);
+      if (!container) return;
+      const list = Array.isArray(currentResume[sec]) ? currentResume[sec] : [];
+      container.innerHTML = list.map((item, idx) => `
+        <div class="exp-item-card" data-section="${sec}" data-index="${idx}">
+          <div class="exp-item-header">
+            <h4>#${idx + 1} ${escapeHtml(item._rowName || '经历')}</h4>
+            <div>
+              <button type="button" class="btn-sm btn-danger" onclick="this.closest('.exp-item-card').remove()">删除此条</button>
+            </div>
+          </div>
+          <div class="exp-fields-grid">
+            <div class="form-item">
+              <label>经历标签 (_rowName)</label>
+              <input type="text" class="exp-field" data-key="_rowName" value="${escapeHtml(item._rowName || '')}" placeholder="例如：硕士 / 腾讯">
+            </div>
+            ${Object.entries(item).filter(([k]) => k !== '_rowName').map(([k, v]) => {
+              const isLongText = ['主要工作', '岗位职责', '自我评价', '项目职责'].includes(k);
+              return `
+                <div class="form-item ${isLongText ? 'full-w' : ''}">
+                  <label>${escapeHtml(k)}</label>
+                  ${isLongText 
+                    ? `<textarea class="exp-field" data-key="${escapeHtml(k)}" rows="3">${escapeHtml(v)}</textarea>`
+                    : `<input type="text" class="exp-field" data-key="${escapeHtml(k)}" value="${escapeHtml(v)}">`
+                  }
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `).join('');
+    });
+  }
+
+  // 全局挂载添加 KV 字段函数
+  window.addKvField = function(sec) {
+    const container = $(`#kv-${sec}`);
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'kv-row';
+    row.setAttribute('data-section', sec);
+    row.innerHTML = `
+      <input type="text" class="kv-key" placeholder="新字段名称">
+      <input type="text" class="kv-val" placeholder="内容值">
+      <button type="button" class="kv-del-btn" title="删除字段" onclick="this.closest('.kv-row').remove()">✕</button>
+    `;
+    container.appendChild(row);
+  };
+
+  // 全局挂载添加经历行卡片
+  window.addExperienceRow = function(sec) {
+    const container = $(`#exp-${sec}`);
+    if (!container) return;
+    const card = document.createElement('div');
+    card.className = 'exp-item-card';
+    card.setAttribute('data-section', sec);
+
+    let defaultFields = [];
+    if (sec === '教育经历') {
+      defaultFields = [
+        { k: '_rowName', label: '经历标签', val: '本/硕' },
+        { k: '学校', label: '学校', val: '' },
+        { k: '学院', label: '学院', val: '' },
+        { k: '专业', label: '专业', val: '' },
+        { k: '学历', label: '学历', val: '本科/硕士' },
+        { k: '开始时间', label: '开始时间', val: '2023-09' },
+        { k: '结束时间', label: '结束时间', val: '2026-06' }
+      ];
+    } else if (sec === '实习经历') {
+      defaultFields = [
+        { k: '_rowName', label: '经历标签', val: '实习单位简写' },
+        { k: '单位', label: '单位全称', val: '' },
+        { k: '部门', label: '部门', val: '' },
+        { k: '岗位', label: '岗位名称', val: '' },
+        { k: '开始', label: '开始时间', val: '2025-06' },
+        { k: '结束', label: '结束时间', val: '至今' },
+        { k: '岗位职责', label: '岗位职责 (长文本)', val: '', isTextarea: true }
+      ];
+    } else if (sec === '项目经历') {
+      defaultFields = [
+        { k: '_rowName', label: '经历标签', val: '项目简称' },
+        { k: '项目名称', label: '项目全称', val: '' },
+        { k: '角色', label: '担任角色', val: '核心负责人' },
+        { k: '开始', label: '开始时间', val: '2024-09' },
+        { k: '结束', label: '结束时间', val: '至今' },
+        { k: '主要工作', label: '主要工作 (长文本)', val: '', isTextarea: true }
+      ];
+    }
+
+    card.innerHTML = `
+      <div class="exp-item-header">
+        <h4>新增经历</h4>
+        <button type="button" class="btn-sm btn-danger" onclick="this.closest('.exp-item-card').remove()">删除此条</button>
+      </div>
+      <div class="exp-fields-grid">
+        ${defaultFields.map(f => `
+          <div class="form-item ${f.isTextarea ? 'full-w' : ''}">
+            <label>${f.label}</label>
+            ${f.isTextarea
+              ? `<textarea class="exp-field" data-key="${f.k}" rows="3" placeholder="详细描述..."></textarea>`
+              : `<input type="text" class="exp-field" data-key="${f.k}" value="${f.val}" placeholder="填写内容...">`
+            }
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(card);
+  };
+
+  // 从 DOM 收集并保存简历数据
+  async function collectAndSaveResume() {
+    const updated = {};
+
+    // 收集 KV
+    ['优先信息', '基本信息', '竞赛与技能'].forEach(sec => {
+      updated[sec] = {};
+      const rows = $$(`#kv-${sec} .kv-row`);
+      rows.forEach(r => {
+        const k = r.querySelector('.kv-key').value.trim();
+        const v = r.querySelector('.kv-val').value.trim();
+        if (k) updated[sec][k] = v;
+      });
+    });
+
+    // 收集经历
+    ['教育经历', '实习经历', '项目经历'].forEach(sec => {
+      updated[sec] = [];
+      const cards = $$(`#exp-${sec} .exp-item-card`);
+      cards.forEach(card => {
+        const item = {};
+        const fields = card.querySelectorAll('.exp-field');
+        fields.forEach(f => {
+          const k = f.getAttribute('data-key');
+          if (k) item[k] = f.value.trim();
+        });
+        if (Object.keys(item).length > 0) {
+          updated[sec].push(item);
+        }
+      });
+    });
+
+    currentResume = updated;
+    await storageSet(RESUME_STORAGE_KEY, currentResume);
+    saveSnapshot(records, currentResume);
+    showToast('🎉 简历资料库已保存！所有网页侧边栏已实时同步');
+  }
+
+  $('#saveAllResumeBtn').addEventListener('click', collectAndSaveResume);
+
+  // 导出简历 JSON
+  $('#resumeExportJsonBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(currentResume, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `resume_profile_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('简历 JSON 已导出');
+  });
+
+  // 导入简历 JSON
+  $('#resumeImportJsonBtn').addEventListener('click', () => $('#resumeFileInput').click());
+  $('#resumeFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const parsed = JSON.parse(evt.target.result);
+        if (parsed && typeof parsed === 'object') {
+          currentResume = parsed;
+          await storageSet(RESUME_STORAGE_KEY, currentResume);
+          renderResumeEditor();
+          showToast('✅ 简历已成功导入并同步！');
+        }
+      } catch (err) {
+        alert('导入失败：不是有效的 JSON 文件');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  // 重置简历为示例
+  $('#resumeResetSeedBtn').addEventListener('click', async () => {
+    if (confirm('确定要重置简历为默认示例数据吗？')) {
+      currentResume = DEFAULT_RESUME;
+      await storageSet(RESUME_STORAGE_KEY, currentResume);
+      renderResumeEditor();
+      showToast('已重置为示例简历');
+    }
+  });
+
+  // ================= TAB 3: 数据安全与备份 =================
+  function downloadFullBackup() {
+    const envelope = {
+      schemaVersion: 2,
+      appVersion: APP_VERSION,
+      savedAt: new Date().toISOString(),
+      recordCount: records.length,
+      records: records,
+      resume: currentResume
+    };
+    const blob = new Blob([JSON.stringify(envelope, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `autumn_assistant_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('完整备份文件已下载');
+  }
+
+  $('#exportDataBtn').addEventListener('click', downloadFullBackup);
+  $('#exportFullBackupBtn').addEventListener('click', downloadFullBackup);
+
+  $('#importFullBackupBtn').addEventListener('click', () => $('#fullBackupFileInput').click());
+  $('#fullBackupFileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const parsed = JSON.parse(evt.target.result);
+        let importedRecords = [];
+        let importedResume = null;
+
+        // 兼容原 autumn-recruitment-tracker 的 envelope 格式或纯数组
+        if (Array.isArray(parsed)) {
+          importedRecords = parsed;
+        } else if (parsed && Array.isArray(parsed.records)) {
+          importedRecords = parsed.records;
+          if (parsed.resume) importedResume = parsed.resume;
+        }
+
+        if (importedRecords.length > 0) {
+          records = importedRecords;
+          await storageSet(RECORDS_STORAGE_KEY, records);
+        }
+        if (importedResume) {
+          currentResume = importedResume;
+          await storageSet(RESUME_STORAGE_KEY, currentResume);
+        }
+
+        saveSnapshot(records, currentResume);
+        renderRecords();
+        renderResumeEditor();
+        showToast(`✅ 成功导入 ${importedRecords.length} 条投递记录！`);
+      } catch (err) {
+        alert('导入失败：文件损坏或格式不兼容');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  // 恢复上一快照
+  $('#restoreLastSnapshotBtn').addEventListener('click', async () => {
+    try {
+      const db = await openSafetyDb();
+      const keys = await new Promise((resolve, reject) => {
+        const tx = db.transaction('snapshots', 'readonly');
+        const req = tx.objectStore('snapshots').getAllKeys();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+
+      if (keys.length < 2) {
+        alert('暂无更早的历史快照可供恢复');
+        return;
+      }
+
+      const prevKey = keys.sort()[keys.length - 2];
+      const snapshot = await new Promise((resolve, reject) => {
+        const tx = db.transaction('snapshots', 'readonly');
+        const req = tx.objectStore('snapshots').get(prevKey);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+
+      if (snapshot && Array.isArray(snapshot.records)) {
+        records = snapshot.records;
+        if (snapshot.resume) currentResume = snapshot.resume;
+        await storageSet(RECORDS_STORAGE_KEY, records);
+        await storageSet(RESUME_STORAGE_KEY, currentResume);
+        renderRecords();
+        renderResumeEditor();
+        showToast(`已成功回滚至快照版本 (${snapshot.savedAt.slice(0, 16)})`);
+      }
+    } catch (e) {
+      alert('快照恢复失败');
+    }
+  });
+
+  // 清空所有数据
+  $('#clearAllDataBtn').addEventListener('click', async () => {
+    if (confirm('警告：确定要清空全部投递记录与简历配置吗？此操作不可逆！')) {
+      records = [];
+      await storageSet(RECORDS_STORAGE_KEY, records);
+      renderRecords();
+      showToast('已清空全部数据');
+    }
+  });
+
+  // ================= 离线 OCR 截图识别逻辑 =================
+  const ocrModal = $('#ocrModal');
+  const ocrDropzone = $('#ocrDropzone');
+  const ocrFileInput = $('#ocrFileInput');
+  const ocrPreviewImg = $('#ocrPreviewImg');
+  const ocrPrompt = $('#ocrPrompt');
+  const startOcrBtn = $('#startOcrBtn');
+  const ocrProgress = $('#ocrProgress');
+  const ocrProgressInner = $('#ocrProgressInner');
+  const ocrStatusText = $('#ocrStatusText');
+  const ocrResultForm = $('#ocrResultForm');
+  const saveOcrRecordBtn = $('#saveOcrRecordBtn');
+
+  $('#openOcrModalBtn').addEventListener('click', () => {
+    resetOcrModal();
+    ocrModal.showModal();
+  });
+  $('#closeOcrModalBtn').addEventListener('click', () => ocrModal.close());
+  $('#cancelOcrBtn').addEventListener('click', () => ocrModal.close());
+
+  ocrDropzone.addEventListener('click', () => ocrFileInput.click());
+  ocrFileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleOcrImage(e.target.files[0]);
+    }
+  });
+
+  // 拖拽支持
+  ocrDropzone.addEventListener('dragover', (e) => { e.preventDefault(); ocrDropzone.style.borderColor = 'var(--primary)'; });
+  ocrDropzone.addEventListener('dragleave', () => { ocrDropzone.style.borderColor = '#cbd5e1'; });
+  ocrDropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    ocrDropzone.style.borderColor = '#cbd5e1';
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleOcrImage(e.dataTransfer.files[0]);
+    }
+  });
+
+  // 粘贴剪贴板图片支持
+  window.addEventListener('paste', (e) => {
+    if (!ocrModal.open) return;
+    const items = e.clipboardData?.items || [];
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) handleOcrImage(file);
+        break;
+      }
+    }
+  });
+
+  function handleOcrImage(file) {
+    ocrFile = file;
+    const url = URL.createObjectURL(file);
+    ocrPreviewImg.src = url;
+    ocrPreviewImg.classList.remove('hidden');
+    ocrPrompt.classList.add('hidden');
+    startOcrBtn.disabled = false;
+  }
+
+  function resetOcrModal() {
+    ocrFile = null;
+    ocrPreviewImg.src = '';
+    ocrPreviewImg.classList.add('hidden');
+    ocrPrompt.classList.remove('hidden');
+    startOcrBtn.disabled = true;
+    startOcrBtn.classList.remove('hidden');
+    ocrProgress.classList.add('hidden');
+    ocrResultForm.classList.add('hidden');
+    saveOcrRecordBtn.classList.add('hidden');
+  }
+
+  startOcrBtn.addEventListener('click', async () => {
+    if (!ocrFile) return;
+    startOcrBtn.disabled = true;
+    ocrProgress.classList.remove('hidden');
+    ocrProgressInner.style.width = '20%';
+    ocrStatusText.textContent = '正在初始化 OCR 识别核心...';
+
+    try {
+      if (typeof Tesseract === 'undefined') {
+        throw new Error('未加载本地 Tesseract 引擎');
+      }
+
+      ocrStatusText.textContent = '正在本地解析图片文字 (离线不耗流量)...';
+      ocrProgressInner.style.width = '50%';
+
+      const worker = Tesseract.createWorker ? await Tesseract.createWorker('chi_sim') : null;
+      let text = '';
+      if (worker) {
+        const ret = await worker.recognize(ocrFile);
+        text = ret.data.text;
+        await worker.terminate();
+      } else {
+        const res = await Tesseract.recognize(ocrFile, 'chi_sim', {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              ocrProgressInner.style.width = `${Math.floor(m.progress * 100)}%`;
+            }
+          }
+        });
+        text = res.data.text;
+      }
+
+      ocrProgressInner.style.width = '100%';
+      ocrStatusText.textContent = '识别完成！';
+
+      // 提取字段
+      const parsed = parseOcrText(text);
+      $('#ocr-company').value = parsed.company;
+      $('#ocr-position').value = parsed.position;
+      $('#ocr-date').value = parsed.date;
+      $('#ocr-stage').value = parsed.stage;
+
+      ocrResultForm.classList.remove('hidden');
+      startOcrBtn.classList.add('hidden');
+      saveOcrRecordBtn.classList.remove('hidden');
+    } catch (err) {
+      console.error(err);
+      alert(`识别失败：${err.message || '图片格式无法解析'}`);
+      ocrProgress.classList.add('hidden');
+      startOcrBtn.disabled = false;
+    }
+  });
+
+  function parseOcrText(rawText) {
+    const text = rawText.replace(/\s+/g, ' ');
+    let stage = '已投递';
+    if (/offer|录用|待入职/i.test(text)) stage = 'Offer';
+    else if (/HR面|人事面/i.test(text)) stage = 'HR面';
+    else if (/二面|复试/.test(text)) stage = '二面';
+    else if (/一面|初面/.test(text)) stage = '一面';
+    else if (/笔试|测评/.test(text)) stage = '笔试';
+
+    const dateMatch = text.match(/(?:投递|申请)?(?:时间|日期)?\s*[:：]?\s*(20\d{2})[.\/年-](\d{1,2})[.\/月-](\d{1,2})日?/);
+    const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}` : new Date().toISOString().slice(0, 10);
+
+    const compMatch = text.match(/(?:公司|企业|单位)\s*[:：]?\s*([^\s，。|]{2,15})/);
+    const posMatch = text.match(/(?:岗位|职位|职务)\s*[:：]?\s*([^\s，。|]{2,20})/);
+
+    return {
+      company: compMatch ? compMatch[1] : (text.slice(0, 10).trim() || '识别公司'),
+      position: posMatch ? posMatch[1] : '识别岗位',
+      date,
+      stage
+    };
+  }
+
+  saveOcrRecordBtn.addEventListener('click', () => {
+    const newRec = {
+      id: cryptoId(),
+      company: $('#ocr-company').value.trim() || '待确认公司',
+      position: $('#ocr-position').value.trim() || '待确认岗位',
+      city: '',
+      applicationDate: $('#ocr-date').value || new Date().toISOString().slice(0, 10),
+      stage: $('#ocr-stage').value,
+      recentSchedule: '截图识别收录',
+      nextAction: '核对岗位详情与跟进状态',
+      updatedAt: Date.now()
+    };
+    records.unshift(newRec);
+    saveRecords(`🎉 已收录: ${newRec.company} - ${newRec.position}`);
+    ocrModal.close();
+  });
+
+  // ================= 初始化启动 =================
+  async function init() {
+    handleUrlHash();
+    await loadRecords();
+    await loadResume();
+    updateSnapshotCount();
+  }
+
+  init();
+})();

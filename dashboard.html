@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>秋招求职与简历中枢看板</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- 左侧常驻导航栏 -->
+    <aside class="app-sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark">🚀</div>
+        <div>
+          <div class="sidebar-title">秋招中枢看板</div>
+          <div class="sidebar-subtitle">求职提效一体化系统 v2.0</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item is-active" id="nav-records" data-tab="records-tab">
+          <span class="nav-icon">📊</span>
+          <span>投递追踪看板</span>
+        </button>
+        <button class="nav-item" id="nav-resume" data-tab="resume-tab">
+          <span class="nav-icon">📝</span>
+          <span>我的简历资料库</span>
+        </button>
+        <button class="nav-item" id="nav-safety" data-tab="safety-tab">
+          <span class="nav-icon">⚙️</span>
+          <span>数据安全与备份</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <strong>💡 提示</strong>
+        <p>在任意招聘网站按 <code>Ctrl+Shift+F</code> 可随时唤起侧边栏辅助填报与一键收录。</p>
+      </div>
+    </aside>
+
+    <!-- 右侧主内容区域 -->
+    <main class="shell">
+      <!-- 顶部功能栏 -->
+      <header class="topbar">
+        <div class="brand">
+          <div>
+            <div class="page-kicker" id="tabKicker">JOB TRACKING DASHBOARD</div>
+            <h1 id="tabTitle">投递追踪看板</h1>
+            <p class="subtitle" id="tabSubtitle">全面监控网申进度、面试安排与全链路阶段流转</p>
+          </div>
+        </div>
+        <div class="top-actions" id="topActionsContainer">
+          <button class="btn" id="openOcrModalBtn"><span class="icon">🖼️</span>截图识别</button>
+          <button class="btn" id="exportDataBtn"><span class="icon">📤</span>导出备份</button>
+          <button class="btn btn-primary" id="addRecordBtn"><span class="icon">+</span>新增投递</button>
+        </div>
+      </header>
+
+      <!-- ================= TAB 1: 投递追踪看板 ================= -->
+      <section class="tab-content is-active" id="records-tab">
+        <!-- 统计指标卡片 -->
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-top">
+              <span>总投递岗位</span>
+              <div class="stat-icon">📑</div>
+            </div>
+            <div class="stat-number" id="totalCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <span>今日投递/更新</span>
+              <div class="stat-icon">⚡</div>
+            </div>
+            <div class="stat-number" id="todayCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <span>进行中流程</span>
+              <div class="stat-icon">🔄</div>
+            </div>
+            <div class="stat-number" id="activeCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <span>近期日程/面试</span>
+              <div class="stat-icon">📅</div>
+            </div>
+            <div class="stat-number" id="weekCount">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <span>已收获 Offer</span>
+              <div class="stat-icon">🎉</div>
+            </div>
+            <div class="stat-number highlight-offer" id="offerCount">0</div>
+          </div>
+        </div>
+
+        <!-- 阶段漏斗与筛选栏 -->
+        <div class="stage-pipeline" id="stagePipeline"></div>
+
+        <!-- 主操作面板 -->
+        <div class="dashboard-grid">
+          <div class="main-panel">
+            <!-- 搜索与筛选工具条 -->
+            <div class="filter-bar">
+              <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" placeholder="搜索公司、岗位名称、城市或下一步行动...">
+              </div>
+              <select id="stageFilter" class="select-control">
+                <option value="">全部阶段</option>
+                <option value="待投递">待投递</option>
+                <option value="已投递">已投递</option>
+                <option value="笔试">笔试</option>
+                <option value="一面">一面</option>
+                <option value="二面">二面</option>
+                <option value="HR面">HR面</option>
+                <option value="Offer">Offer</option>
+                <option value="已结束">已结束</option>
+              </select>
+              <select id="sortSelect" class="select-control">
+                <option value="updatedAt_desc">最近更新优先</option>
+                <option value="applicationDate_desc">投递日期降序</option>
+                <option value="applicationDate_asc">投递日期升序</option>
+                <option value="company_asc">公司名称 (A-Z)</option>
+              </select>
+            </div>
+
+            <!-- 投递记录表格 -->
+            <div class="table-card">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>公司与岗位</th>
+                      <th>城市</th>
+                      <th>投递日期</th>
+                      <th>当前阶段</th>
+                      <th>最近安排 / 下一步行动</th>
+                      <th class="text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recordsTbody"></tbody>
+                </table>
+              </div>
+              <div class="empty-state hidden" id="recordsEmptyState">
+                <div class="empty-icon">📭</div>
+                <h3>暂无符合条件的投递记录</h3>
+                <p>点击上方“新增投递”或在招聘页面点击“一键收录”添加新记录。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右侧边栏：未来日程与行动 -->
+          <div class="side-panel">
+            <div class="schedule-card">
+              <div class="card-head">
+                <h3>📅 近期待办与面试安排</h3>
+              </div>
+              <div class="schedule-list" id="upcomingList"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 2: 我的简历资料库 ================= -->
+      <section class="tab-content" id="resume-tab">
+        <div class="resume-toolbar">
+          <div class="resume-toolbar-left">
+            <p>在此维护你的个人求职信息，数据将实时同步至网页端侧边栏。支持自定义添加任意字段与多段经历。</p>
+          </div>
+          <div class="resume-toolbar-right">
+            <button class="btn" id="resumeExportJsonBtn">导出简历 JSON</button>
+            <button class="btn" id="resumeImportJsonBtn">导入简历 JSON</button>
+            <button class="btn" id="resumeResetSeedBtn">重置为示例</button>
+            <button class="btn btn-primary" id="saveAllResumeBtn">💾 保存并实时同步</button>
+            <input type="file" id="resumeFileInput" accept=".json,application/json" hidden>
+          </div>
+        </div>
+
+        <div class="resume-editor-grid">
+          <!-- 优先信息 -->
+          <div class="editor-card" id="card-priority">
+            <div class="editor-card-head">
+              <h3>⭐ 优先信息 (常用高频字段)</h3>
+              <button class="btn-sm" onclick="addKvField('优先信息')">+ 添加字段</button>
+            </div>
+            <div class="kv-container" id="kv-优先信息"></div>
+          </div>
+
+          <!-- 基本信息 -->
+          <div class="editor-card" id="card-basic">
+            <div class="editor-card-head">
+              <h3>👤 基本信息</h3>
+              <button class="btn-sm" onclick="addKvField('基本信息')">+ 添加字段</button>
+            </div>
+            <div class="kv-container" id="kv-基本信息"></div>
+          </div>
+
+          <!-- 教育经历 -->
+          <div class="editor-card full-col" id="card-edu">
+            <div class="editor-card-head">
+              <h3>🎓 教育经历</h3>
+              <button class="btn-sm" onclick="addExperienceRow('教育经历')">+ 添加教育经历</button>
+            </div>
+            <div class="exp-container" id="exp-教育经历"></div>
+          </div>
+
+          <!-- 实习经历 -->
+          <div class="editor-card full-col" id="card-intern">
+            <div class="editor-card-head">
+              <h3>💼 实习经历</h3>
+              <button class="btn-sm" onclick="addExperienceRow('实习经历')">+ 添加实习经历</button>
+            </div>
+            <div class="exp-container" id="exp-实习经历"></div>
+          </div>
+
+          <!-- 项目经历 -->
+          <div class="editor-card full-col" id="card-project">
+            <div class="editor-card-head">
+              <h3>🚀 项目经历</h3>
+              <button class="btn-sm" onclick="addExperienceRow('项目经历')">+ 添加项目经历</button>
+            </div>
+            <div class="exp-container" id="exp-项目经历"></div>
+          </div>
+
+          <!-- 竞赛与技能 -->
+          <div class="editor-card full-col" id="card-skills">
+            <div class="editor-card-head">
+              <h3>🏆 竞赛、论文与综合技能</h3>
+              <button class="btn-sm" onclick="addKvField('竞赛与技能')">+ 添加字段</button>
+            </div>
+            <div class="kv-container" id="kv-竞赛与技能"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 3: 数据安全与备份 ================= -->
+      <section class="tab-content" id="safety-tab">
+        <div class="safety-wrapper">
+          <div class="safety-box">
+            <h2>🛡️ 本地数据安全保障</h2>
+            <p class="safety-desc">所有投递数据与简历配置 100% 存储于您的浏览器本地（<code>chrome.storage.local</code>），不经过任何第三方服务器，绝对保护您的求职隐私。</p>
+
+            <div class="safety-cards-grid">
+              <div class="safety-metric-card">
+                <div class="metric-title">浏览器本地主存储</div>
+                <div class="metric-status" id="storageStatusText">已激活 (chrome.storage.local)</div>
+                <p class="metric-desc">存储键名：autumnRecruitmentTracker.records.v1</p>
+              </div>
+
+              <div class="safety-metric-card">
+                <div class="metric-title">历史版本快照 (IndexedDB)</div>
+                <div class="metric-status" id="snapshotCountText">正在读取快照...</div>
+                <p class="metric-desc">系统每次更新自动生成快照，支持随时回退</p>
+              </div>
+            </div>
+
+            <div class="safety-btn-group">
+              <button class="btn btn-primary" id="exportFullBackupBtn">📥 导出完整数据备份 (JSON)</button>
+              <button class="btn" id="importFullBackupBtn">📤 导入备份文件 (兼容旧版)</button>
+              <button class="btn" id="restoreLastSnapshotBtn">⏪ 恢复上一历史快照</button>
+              <button class="btn btn-danger" id="clearAllDataBtn">⚠️ 清空所有数据</button>
+              <input type="file" id="fullBackupFileInput" accept=".json,application/json" hidden>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= 模态弹窗: 新增/编辑投递记录 ================= -->
+  <dialog id="recordModal" class="modal-dialog">
+    <div class="modal-header">
+      <h2 id="modalTitle">新增投递记录</h2>
+      <button class="modal-close-btn" id="closeModalBtn">✕</button>
+    </div>
+    <form id="recordForm" class="modal-body">
+      <input type="hidden" id="editRecordId">
+      <div class="form-grid">
+        <div class="form-item">
+          <label>公司名称 <span class="req">*</span></label>
+          <input type="text" id="m-company" required placeholder="例如：腾讯科技">
+        </div>
+        <div class="form-item">
+          <label>投递岗位 <span class="req">*</span></label>
+          <input type="text" id="m-position" required placeholder="例如：AI产品经理">
+        </div>
+        <div class="form-item">
+          <label>城市</label>
+          <input type="text" id="m-city" placeholder="例如：深圳 / 远程">
+        </div>
+        <div class="form-item">
+          <label>投递日期</label>
+          <input type="date" id="m-date">
+        </div>
+        <div class="form-item">
+          <label>当前阶段</label>
+          <select id="m-stage">
+            <option value="待投递">待投递</option>
+            <option value="已投递">已投递</option>
+            <option value="笔试">笔试</option>
+            <option value="一面">一面</option>
+            <option value="二面">二面</option>
+            <option value="HR面">HR面</option>
+            <option value="Offer">Offer</option>
+            <option value="已结束">已结束</option>
+          </select>
+        </div>
+        <div class="form-item">
+          <label>招聘/网申原链接</label>
+          <input type="url" id="m-url" placeholder="https://...">
+        </div>
+        <div class="form-item">
+          <label>最近日程时间</label>
+          <input type="datetime-local" id="m-scheduleAt">
+        </div>
+        <div class="form-item">
+          <label>最近日程内容</label>
+          <input type="text" id="m-recentSchedule" placeholder="例如：腾讯会议初面">
+        </div>
+        <div class="form-item full-width">
+          <label>下一步行动与复盘备忘</label>
+          <textarea id="m-nextAction" rows="3" placeholder="例如：准备产品案例讲解，深挖多智能体框架设计细节..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" id="cancelModalBtn">取消</button>
+        <button type="submit" class="btn btn-primary">保存记录</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================= 模态弹窗: OCR 截图识别 ================= -->
+  <dialog id="ocrModal" class="modal-dialog">
+    <div class="modal-header">
+      <h2>🖼️ 截图智能识别录入</h2>
+      <button class="modal-close-btn" id="closeOcrModalBtn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="ocr-dropzone" id="ocrDropzone">
+        <div class="ocr-prompt" id="ocrPrompt">
+          <div class="ocr-icon">📸</div>
+          <p><strong>点击选择</strong> 或 <strong>直接拖拽截图</strong> 到此处</p>
+          <span>支持微信/飞书截图、网申完成页面、面试邮件截图 (支持 Ctrl+V 粘贴)</span>
+        </div>
+        <img id="ocrPreviewImg" class="ocr-preview hidden" alt="截图预览">
+        <input type="file" id="ocrFileInput" accept="image/*" hidden>
+      </div>
+      <div class="ocr-progress-bar hidden" id="ocrProgress">
+        <div class="ocr-progress-inner" id="ocrProgressInner"></div>
+        <span class="ocr-status-text" id="ocrStatusText">正在识别文字中...</span>
+      </div>
+      <div class="ocr-result-form hidden" id="ocrResultForm">
+        <h4>识别结果 (请核对后存入)</h4>
+        <div class="form-grid">
+          <div class="form-item">
+            <label>识别公司</label>
+            <input type="text" id="ocr-company">
+          </div>
+          <div class="form-item">
+            <label>识别岗位</label>
+            <input type="text" id="ocr-position">
+          </div>
+          <div class="form-item">
+            <label>识别日期</label>
+            <input type="date" id="ocr-date">
+          </div>
+          <div class="form-item">
+            <label>识别阶段</label>
+            <select id="ocr-stage">
+              <option value="已投递">已投递</option>
+              <option value="笔试">笔试</option>
+              <option value="一面">一面</option>
+              <option value="二面">二面</option>
+              <option value="HR面">HR面</option>
+              <option value="Offer">Offer</option>
+              <option value="待投递">待投递</option>
+              <option value="已结束">已结束</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn" id="cancelOcrBtn">关闭</button>
+      <button type="button" class="btn btn-primary" id="startOcrBtn" disabled>开始识别</button>
+      <button type="button" class="btn btn-primary hidden" id="saveOcrRecordBtn">✓ 存入投递记录</button>
+    </div>
+  </dialog>
+
+  <!-- 全局 Toast 提示 -->
+  <div class="toast" id="globalToast" role="status"></div>
+
+  <!-- 引入本地离线 OCR 引擎 -->
+  <script src="./ocr/tesseract.min.js"></script>
+  <script src="./ocr/chi_sim-data.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

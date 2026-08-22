@@ -81,14 +81,27 @@
 
   let currentResumeData = DEFAULT_RESUME;
   let lastFocusedEl = null;
+  let lastSelectionStart = null;
+  let lastSelectionEnd = null;
 
-  // ================= 监听宿主页面聚焦事件 =================
-  document.addEventListener('focusin', (e) => {
-    const el = e.target;
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+  function updateActiveSelection(el) {
+    if (!el) return;
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      lastFocusedEl = el;
+      try {
+        lastSelectionStart = el.selectionStart;
+        lastSelectionEnd = el.selectionEnd;
+      } catch (_) {}
+    } else if (el.isContentEditable) {
       lastFocusedEl = el;
     }
-  }, true);
+  }
+
+  // ================= 监听宿主页面聚焦与光标交互事件 =================
+  document.addEventListener('focusin', (e) => updateActiveSelection(e.target), true);
+  document.addEventListener('click', (e) => updateActiveSelection(e.target), true);
+  document.addEventListener('keyup', (e) => updateActiveSelection(e.target), true);
+  document.addEventListener('select', (e) => updateActiveSelection(e.target), true);
 
   // ================= 创建宿主容器与 Shadow Root =================
   const host = document.createElement('div');
@@ -796,7 +809,7 @@
     }
   });
 
-  // 点击字段按钮 -> 填入 + 剪贴板兜底
+  // 点击字段按钮 -> 光标处插入/追加 + 剪贴板兜底
   resumeListEl.addEventListener('click', (e) => {
     const btn = e.target.closest('.field-btn');
     if (!btn) return;
@@ -813,18 +826,55 @@
     const targetEl = lastFocusedEl;
     if (targetEl && document.contains(targetEl)) {
       try {
-        const proto = (targetEl instanceof HTMLTextAreaElement) ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-        if (setter) {
-          setter.call(targetEl, value);
+        if (targetEl instanceof HTMLInputElement || targetEl instanceof HTMLTextAreaElement) {
+          const prevVal = targetEl.value || '';
+          
+          // 获取当前光标位置（如选区存在则替换选区，如无选区则直接在光标处插入）
+          let start = (typeof targetEl.selectionStart === 'number' && targetEl.selectionStart >= 0)
+            ? targetEl.selectionStart
+            : ((typeof lastSelectionStart === 'number' && lastSelectionStart >= 0) ? lastSelectionStart : prevVal.length);
+            
+          let end = (typeof targetEl.selectionEnd === 'number' && targetEl.selectionEnd >= 0)
+            ? targetEl.selectionEnd
+            : ((typeof lastSelectionEnd === 'number' && lastSelectionEnd >= 0) ? lastSelectionEnd : start);
+
+          if (start > prevVal.length) start = prevVal.length;
+          if (end > prevVal.length) end = prevVal.length;
+
+          // 拼接新值
+          const newVal = prevVal.slice(0, start) + value + prevVal.slice(end);
+
+          const proto = (targetEl instanceof HTMLTextAreaElement) ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          if (setter) {
+            setter.call(targetEl, newVal);
+          } else {
+            targetEl.value = newVal;
+          }
+
+          // 触发 input 与 change 事件通知网页端框架 (Vue/React/Angular)
+          targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+          targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+
+          // 将光标定位在新插入内容的末尾并聚焦
+          targetEl.focus();
+          const nextCursorPos = start + value.length;
+          try {
+            targetEl.setSelectionRange(nextCursorPos, nextCursorPos);
+            lastSelectionStart = nextCursorPos;
+            lastSelectionEnd = nextCursorPos;
+          } catch (_) {}
+
+          showToast(`已插入: ${value.slice(0, 12)}${value.length > 12 ? '...' : ''}`);
+        } else if (targetEl.isContentEditable) {
+          targetEl.focus();
+          document.execCommand('insertText', false, value);
+          showToast(`已插入: ${value.slice(0, 12)}${value.length > 12 ? '...' : ''}`);
         } else {
-          targetEl.value = value;
+          showToast(`已复制到剪贴板，请在表单中粘贴`);
         }
-        targetEl.dispatchEvent(new Event('input', { bubbles: true }));
-        targetEl.dispatchEvent(new Event('change', { bubbles: true }));
-        targetEl.focus();
-        showToast(`已填入: ${value.slice(0, 12)}${value.length > 12 ? '...' : ''}`);
       } catch (err) {
+        console.warn('插入文本异常', err);
         showToast(`已复制到剪贴板，请手动粘贴`);
       }
     } else {

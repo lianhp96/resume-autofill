@@ -936,7 +936,7 @@
     saveOcrRecordBtn.classList.add('hidden');
   }
 
-  // 辅助函数：将任意格式图片文件转为标准 Canvas 与 DataURL
+  // 辅助函数：将任意格式图片文件转为标准 Canvas (填充白底保证 OCR 识别对比度)
   function loadImageToCanvas(file) {
     return new Promise((resolve, reject) => {
       if (!file) return reject(new Error('未选择有效图片'));
@@ -945,10 +945,16 @@
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth || img.width || 800;
-          canvas.height = img.naturalHeight || img.height || 600;
+          const width = img.naturalWidth || img.width || 800;
+          const height = img.naturalHeight || img.height || 600;
+          canvas.width = width;
+          canvas.height = height;
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
+          
+          // 关键：PNG 截图透明通道处理，填充纯白底色确保 OCR 算法准确识别
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
           resolve({ canvas, dataUrl: e.target.result });
         };
         img.onerror = () => reject(new Error('图片格式无法解码，请上传常见 PNG 或 JPG 图片'));
@@ -971,8 +977,8 @@
         throw new Error('未加载本地 Tesseract OCR 引擎组件');
       }
 
-      // 1. 转为标准 Canvas，确保任何 PNG/JPG/WebP/剪贴板图片均可正常解析
-      const { canvas, dataUrl } = await loadImageToCanvas(ocrFile);
+      // 1. 转为标准白底 Canvas，消除透明通道与格式差异
+      const { canvas } = await loadImageToCanvas(ocrFile);
 
       ocrProgressInner.style.width = '35%';
       ocrStatusText.textContent = '正在初始化本地离线识别核心...';
@@ -984,11 +990,14 @@
         corePath: isExtension ? chrome.runtime.getURL('ocr/core') : './ocr/core',
         langPath: isExtension ? chrome.runtime.getURL('ocr') : './ocr',
         gzip: true,
+        lstmOnly: true,
         logger: m => {
           if (m.status === 'recognizing text' && typeof m.progress === 'number') {
             const pct = Math.min(99, Math.max(35, Math.floor(m.progress * 100)));
             ocrProgressInner.style.width = `${pct}%`;
             ocrStatusText.textContent = `正在识别文字 (${pct}%)...`;
+          } else if (m.status) {
+            ocrStatusText.textContent = `正在处理: ${m.status}...`;
           }
         }
       };

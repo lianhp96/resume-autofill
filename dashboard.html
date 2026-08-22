@@ -396,10 +396,10 @@
   <!-- 全局 Toast 提示 -->
   <div class="toast" id="globalToast" role="status"></div>
 
-  <!-- 核心交互脚本优先加载 -->
+  <!-- 离线 OCR 基础依赖优先加载 -->
+  <script src="./ocr/tesseract.min.js"></script>
+  <script src="./ocr/chi_sim-data.js"></script>
+  <!-- 看板核心逻辑 -->
   <script src="dashboard.js"></script>
-  <!-- 离线 OCR 引擎异步加载 -->
-  <script defer src="./ocr/tesseract.min.js"></script>
-  <script defer src="./ocr/chi_sim-data.js"></script>
 </body>
 </html>

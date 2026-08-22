@@ -936,6 +936,57 @@
     saveOcrRecordBtn.classList.add('hidden');
   }
 
+  // ================= 离线 OCR 预热与识别核心 =================
+  function openTesseractCache() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('keyval-store');
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('keyval')) {
+          request.result.createObjectStore('keyval');
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('无法打开本地识别缓存数据库'));
+    });
+  }
+
+  async function ensureChineseOcrModel() {
+    if (!window.__OCR_CHI_SIM_GZIP_BASE64__) throw new Error('中文识别模型依赖缺失 (chi_sim-data.js 未加载)');
+    const db = await openTesseractCache();
+    const key = './chi_sim.traineddata';
+    const exists = await new Promise((resolve, reject) => {
+      const request = db.transaction('keyval', 'readonly').objectStore('keyval').get(key);
+      request.onsuccess = () => resolve(typeof request.result !== 'undefined');
+      request.onerror = () => reject(request.error);
+    });
+    if (!exists) {
+      const raw = atob(window.__OCR_CHI_SIM_GZIP_BASE64__);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('keyval', 'readwrite');
+        tx.objectStore('keyval').put(bytes, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error || new Error('写入离线语言模型到 IndexedDB 失败'));
+      });
+    }
+    db.close();
+  }
+
+  function describeOcrProgress(message) {
+    const names = {
+      'loading tesseract core': '正在加载本地识别引擎',
+      'initializing tesseract': '正在初始化识别引擎',
+      'loading language traineddata': '正在读取离线中文模型',
+      'initializing api': '正在准备中文识别',
+      'recognizing text': '正在识别截图文字'
+    };
+    const progress = Math.max(0, Math.min(1, Number(message.progress) || 0));
+    ocrProgressInner.style.width = `${Math.round(progress * 100)}%`;
+    ocrStatusText.textContent = `${names[message.status] || '正在识别'}… ${Math.round(progress * 100)}%`;
+  }
+
   // 辅助函数：将任意格式图片文件转为标准 Canvas (填充白底保证 OCR 识别对比度)
   function loadImageToCanvas(file) {
     return new Promise((resolve, reject) => {
@@ -969,55 +1020,45 @@
     if (!ocrFile) return;
     startOcrBtn.disabled = true;
     ocrProgress.classList.remove('hidden');
-    ocrProgressInner.style.width = '15%';
-    ocrStatusText.textContent = '正在读取与预处理图片...';
+    ocrProgressInner.style.width = '2%';
+    ocrStatusText.textContent = '正在准备离线中文识别，首次可能需要几秒…';
 
     try {
-      if (typeof Tesseract === 'undefined') {
-        throw new Error('未加载本地 Tesseract OCR 引擎组件');
+      if (typeof window.Tesseract === 'undefined') {
+        throw new Error('未加载本地 Tesseract OCR 引擎组件 (tesseract.min.js)');
       }
 
-      // 1. 转为标准白底 Canvas，消除透明通道与格式差异
+      // 1. 确保离线语言模型已注入 IndexedDB keyval-store
+      await ensureChineseOcrModel();
+
+      // 2. 转为标准白底 Canvas，消除透明通道与格式差异
       const { canvas } = await loadImageToCanvas(ocrFile);
 
-      ocrProgressInner.style.width = '35%';
-      ocrStatusText.textContent = '正在初始化本地离线识别核心...';
+      // 3. 构建本地相对/扩展绝对路径
+      const ocrRoot = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL)
+        ? chrome.runtime.getURL('ocr/')
+        : new URL('./ocr/', location.href).href;
 
-      // 2. 配置本地绝对路径，确保 Chrome 扩展与本地 file 模式 100% 离线识别
-      const isExtension = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL;
-      const workerOptions = {
-        workerPath: isExtension ? chrome.runtime.getURL('ocr/worker.min.js') : './ocr/worker.min.js',
-        corePath: isExtension ? chrome.runtime.getURL('ocr/core') : './ocr/core',
-        langPath: isExtension ? chrome.runtime.getURL('ocr') : './ocr',
-        gzip: true,
-        lstmOnly: true,
-        logger: m => {
-          if (m.status === 'recognizing text' && typeof m.progress === 'number') {
-            const pct = Math.min(99, Math.max(35, Math.floor(m.progress * 100)));
-            ocrProgressInner.style.width = `${pct}%`;
-            ocrStatusText.textContent = `正在识别文字 (${pct}%)...`;
-          } else if (m.status) {
-            ocrStatusText.textContent = `正在处理: ${m.status}...`;
-          }
-        }
-      };
+      // 4. 启动 Worker 并配置 cacheMethod: 'readOnly'
+      ocrWorker = await Tesseract.createWorker('chi_sim', 1, {
+        workerPath: `${ocrRoot}worker.min.js`,
+        corePath: `${ocrRoot}core`,
+        langPath: `${ocrRoot}lang`,
+        cacheMethod: 'readOnly',
+        logger: describeOcrProgress
+      });
 
-      let text = '';
-      if (typeof Tesseract.createWorker === 'function') {
-        const worker = await Tesseract.createWorker('chi_sim', 1, workerOptions);
-        const ret = await worker.recognize(canvas);
-        text = ret?.data?.text || '';
-        await worker.terminate();
-      } else {
-        const res = await Tesseract.recognize(canvas, 'chi_sim', workerOptions);
-        text = res?.data?.text || '';
-      }
+      // 5. 执行识别
+      const result = await ocrWorker.recognize(canvas);
+      const text = result?.data?.text || '';
+      await ocrWorker.terminate();
+      ocrWorker = null;
 
       ocrProgressInner.style.width = '100%';
       ocrStatusText.textContent = '识别完成！';
 
-      // 3. 智能正则提取字段
-      const parsed = parseOcrText(text || '');
+      // 6. 智能正则提取字段
+      const parsed = parseOcrText(text);
       $('#ocr-company').value = parsed.company;
       $('#ocr-position').value = parsed.position;
       $('#ocr-date').value = parsed.date;
@@ -1028,30 +1069,58 @@
       saveOcrRecordBtn.classList.remove('hidden');
     } catch (err) {
       console.error('OCR 识别失败', err);
-      alert(`识别失败：${err.message || '图片格式无法解析，请检查图片或直接手动录入'}`);
+      if (ocrWorker) {
+        try { await ocrWorker.terminate(); } catch (_) {}
+        ocrWorker = null;
+      }
+      alert(`识别失败：${err.message || '请检查图片清晰度或直接手动录入'}`);
       ocrProgress.classList.add('hidden');
       startOcrBtn.disabled = false;
     }
   });
 
+  function cleanOcrCandidate(value, maxLength = 80) {
+    return String(value || '')
+      .replace(/^[\s:：|·•\-—]+|[\s:：|·•\-—]+$/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .slice(0, maxLength);
+  }
+
+  function matchOcrLabel(text, labels, maxLength) {
+    const labelGroup = labels.join('|');
+    const match = text.match(new RegExp(`(?:${labelGroup})\\s*[:：]?\\s*([^\\n]{2,${maxLength}})`, 'i'));
+    return cleanOcrCandidate(match?.[1], maxLength);
+  }
+
   function parseOcrText(rawText) {
-    const text = rawText.replace(/\s+/g, ' ');
+    const text = String(rawText || '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').trim();
+    const lines = text.split('\n').map(line => cleanOcrCandidate(line, 100)).filter(line => line.length >= 2);
+    let company = matchOcrLabel(text, ['公司(?:名称)?', '企业(?:名称)?', '招聘单位', '应聘公司'], 60);
+    let position = matchOcrLabel(text, ['投递岗位', '应聘岗位', '应聘职位', '岗位(?:名称)?', '职位(?:名称)?'], 80);
+    if (!company) company = lines.find(line => /(?:公司|集团|科技|银行|证券|咨询|智能|互娱|网络|汽车|电子|传媒|研究院)/.test(line) && line.length <= 45) || '';
+    if (!position) position = lines.find(line => /(?:工程师|经理|运营|设计师|分析师|顾问|开发|算法|产品|实习|管培生|专员|研究员)/.test(line) && line.length <= 60) || '';
+
     let stage = '已投递';
-    if (/offer|录用|待入职/i.test(text)) stage = 'Offer';
-    else if (/HR面|人事面/i.test(text)) stage = 'HR面';
-    else if (/二面|复试/.test(text)) stage = '二面';
-    else if (/一面|初面/.test(text)) stage = '一面';
-    else if (/笔试|测评/.test(text)) stage = '笔试';
+    if (/(?:offer|录用|已通过|已录取)/i.test(text)) stage = 'Offer';
+    else if (/(?:已结束|流程结束|不合适|未通过|淘汰|拒绝)/i.test(text)) stage = '已结束';
+    else if (/(?:HR\s*面|人力面|人事面)/i.test(text)) stage = 'HR面';
+    else if (/(?:二面|第二轮面试|复试)/i.test(text)) stage = '二面';
+    else if (/(?:一面|第一轮面试|初面|面试中)/i.test(text)) stage = '一面';
+    else if (/(?:笔试|测评|在线测试)/i.test(text)) stage = '笔试';
 
-    const dateMatch = text.match(/(?:投递|申请)?(?:时间|日期)?\s*[:：]?\s*(20\d{2})[.\/年-](\d{1,2})[.\/月-](\d{1,2})日?/);
-    const date = dateMatch ? `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}` : new Date().toISOString().slice(0, 10);
-
-    const compMatch = text.match(/(?:公司|企业|单位)\s*[:：]?\s*([^\s，。|]{2,15})/);
-    const posMatch = text.match(/(?:岗位|职位|职务)\s*[:：]?\s*([^\s，。|]{2,20})/);
+    const labelled = text.match(/(?:投递|申请|提交)(?:日期|时间)?\s*[:：]?\s*(20\d{2})\s*[年/.\-]\s*(\d{1,2})\s*[月/.\-]\s*(\d{1,2})\s*日?/);
+    const generic = text.match(/(20\d{2})\s*[年/.\-]\s*(\d{1,2})\s*[月/.\-]\s*(\d{1,2})\s*日?/);
+    const parts = labelled || generic;
+    let date = new Date().toISOString().slice(0, 10);
+    if (parts) {
+      const month = String(Math.min(12, Math.max(1, Number(parts[2])))).padStart(2, '0');
+      const day = String(Math.min(31, Math.max(1, Number(parts[3])))).padStart(2, '0');
+      date = `${parts[1]}-${month}-${day}`;
+    }
 
     return {
-      company: compMatch ? compMatch[1] : (text.slice(0, 10).trim() || '识别公司'),
-      position: posMatch ? posMatch[1] : '识别岗位',
+      company: cleanOcrCandidate(company, 60) || '识别公司',
+      position: cleanOcrCandidate(position, 80) || '识别岗位',
       date,
       stage
     };

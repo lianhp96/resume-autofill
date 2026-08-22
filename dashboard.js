@@ -936,43 +936,79 @@
     saveOcrRecordBtn.classList.add('hidden');
   }
 
+  // 辅助函数：将任意格式图片文件转为标准 Canvas 与 DataURL
+  function loadImageToCanvas(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) return reject(new Error('未选择有效图片'));
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width || 800;
+          canvas.height = img.naturalHeight || img.height || 600;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          resolve({ canvas, dataUrl: e.target.result });
+        };
+        img.onerror = () => reject(new Error('图片格式无法解码，请上传常见 PNG 或 JPG 图片'));
+        img.src = e.target.result;
+      };
+      reader.onerror = () => reject(new Error('读取图片文件失败'));
+      reader.readAsDataURL(file);
+    });
+  }
+
   startOcrBtn.addEventListener('click', async () => {
     if (!ocrFile) return;
     startOcrBtn.disabled = true;
     ocrProgress.classList.remove('hidden');
-    ocrProgressInner.style.width = '20%';
-    ocrStatusText.textContent = '正在初始化 OCR 识别核心...';
+    ocrProgressInner.style.width = '15%';
+    ocrStatusText.textContent = '正在读取与预处理图片...';
 
     try {
       if (typeof Tesseract === 'undefined') {
-        throw new Error('未加载本地 Tesseract 引擎');
+        throw new Error('未加载本地 Tesseract OCR 引擎组件');
       }
 
-      ocrStatusText.textContent = '正在本地解析图片文字 (离线不耗流量)...';
-      ocrProgressInner.style.width = '50%';
+      // 1. 转为标准 Canvas，确保任何 PNG/JPG/WebP/剪贴板图片均可正常解析
+      const { canvas, dataUrl } = await loadImageToCanvas(ocrFile);
 
-      const worker = Tesseract.createWorker ? await Tesseract.createWorker('chi_sim') : null;
+      ocrProgressInner.style.width = '35%';
+      ocrStatusText.textContent = '正在初始化本地离线识别核心...';
+
+      // 2. 配置本地绝对路径，确保 Chrome 扩展与本地 file 模式 100% 离线识别
+      const isExtension = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL;
+      const workerOptions = {
+        workerPath: isExtension ? chrome.runtime.getURL('ocr/worker.min.js') : './ocr/worker.min.js',
+        corePath: isExtension ? chrome.runtime.getURL('ocr/core') : './ocr/core',
+        langPath: isExtension ? chrome.runtime.getURL('ocr') : './ocr',
+        gzip: true,
+        logger: m => {
+          if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+            const pct = Math.min(99, Math.max(35, Math.floor(m.progress * 100)));
+            ocrProgressInner.style.width = `${pct}%`;
+            ocrStatusText.textContent = `正在识别文字 (${pct}%)...`;
+          }
+        }
+      };
+
       let text = '';
-      if (worker) {
-        const ret = await worker.recognize(ocrFile);
-        text = ret.data.text;
+      if (typeof Tesseract.createWorker === 'function') {
+        const worker = await Tesseract.createWorker('chi_sim', 1, workerOptions);
+        const ret = await worker.recognize(canvas);
+        text = ret?.data?.text || '';
         await worker.terminate();
       } else {
-        const res = await Tesseract.recognize(ocrFile, 'chi_sim', {
-          logger: m => {
-            if (m.status === 'recognizing text') {
-              ocrProgressInner.style.width = `${Math.floor(m.progress * 100)}%`;
-            }
-          }
-        });
-        text = res.data.text;
+        const res = await Tesseract.recognize(canvas, 'chi_sim', workerOptions);
+        text = res?.data?.text || '';
       }
 
       ocrProgressInner.style.width = '100%';
       ocrStatusText.textContent = '识别完成！';
 
-      // 提取字段
-      const parsed = parseOcrText(text);
+      // 3. 智能正则提取字段
+      const parsed = parseOcrText(text || '');
       $('#ocr-company').value = parsed.company;
       $('#ocr-position').value = parsed.position;
       $('#ocr-date').value = parsed.date;
@@ -982,8 +1018,8 @@
       startOcrBtn.classList.add('hidden');
       saveOcrRecordBtn.classList.remove('hidden');
     } catch (err) {
-      console.error(err);
-      alert(`识别失败：${err.message || '图片格式无法解析'}`);
+      console.error('OCR 识别失败', err);
+      alert(`识别失败：${err.message || '图片格式无法解析，请检查图片或直接手动录入'}`);
       ocrProgress.classList.add('hidden');
       startOcrBtn.disabled = false;
     }

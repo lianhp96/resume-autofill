@@ -236,9 +236,11 @@
   // ================= TAB 1: 投递追踪核心逻辑 =================
   async function loadRecords() {
     const saved = await storageGet(RECORDS_STORAGE_KEY);
-    if (Array.isArray(saved) && saved.length > 0) {
+    // 只要本地已存在存储（即使是删除后的空数组 []），均直接读取，不再自动生成示例数据
+    if (Array.isArray(saved)) {
       records = saved;
     } else {
+      // 仅在首次全新安装/初始化（null 或 undefined）时载入初始示例
       records = getExampleRecords();
       await storageSet(RECORDS_STORAGE_KEY, records);
     }

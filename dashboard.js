@@ -1039,12 +1039,13 @@
         ? chrome.runtime.getURL('ocr/')
         : new URL('./ocr/', location.href).href;
 
-      // 4. 启动 Worker 并配置 cacheMethod: 'readOnly'
+      // 4. 启动 Worker 并配置 cacheMethod: 'readOnly' 与 workerBlobURL: false (兼容 MV3 扩展沙箱)
       ocrWorker = await Tesseract.createWorker('chi_sim', 1, {
         workerPath: `${ocrRoot}worker.min.js`,
         corePath: `${ocrRoot}core`,
         langPath: `${ocrRoot}lang`,
         cacheMethod: 'readOnly',
+        workerBlobURL: false,
         logger: describeOcrProgress
       });
 

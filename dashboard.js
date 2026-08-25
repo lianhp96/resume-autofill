@@ -90,10 +90,10 @@
   function getExampleRecords() {
     const now = Date.now();
     return [
-      { id: cryptoId(), company: '腾讯科技', position: 'AI产品经理校招生', city: '深圳', applicationDate: new Date(now - 86400000 * 3).toISOString().slice(0, 10), stage: '一面', scheduleAt: new Date(now + 86400000 * 2).toISOString().slice(0, 16), recentSchedule: '腾讯会议专业面', nextAction: '复盘 Agent 架构项目经历，准备 3 分钟自我介绍', updatedAt: now - 3000 },
-      { id: cryptoId(), company: '字节跳动', position: '大模型应用产品经理', city: '北京', applicationDate: new Date(now - 86400000 * 8).toISOString().slice(0, 10), stage: '笔试', scheduleAt: new Date(now + 86400000 * 1).toISOString().slice(0, 16), recentSchedule: '在线专业笔试', nextAction: '复习产品分析案例与行测', updatedAt: now - 6000 },
-      { id: cryptoId(), company: '阿里巴巴', position: '算法工程师 (NLP/Agent)', city: '杭州', applicationDate: new Date(now - 86400000 * 12).toISOString().slice(0, 10), stage: '二面', scheduleAt: new Date(now + 86400000 * 4).toISOString().slice(0, 16), recentSchedule: '总监业务面', nextAction: '深入准备多物理场仿真论文讲解', updatedAt: now - 10000 },
-      { id: cryptoId(), company: '美团', position: '商业化产品经理', city: '北京', applicationDate: new Date(now - 86400000 * 20).toISOString().slice(0, 10), stage: 'Offer', scheduleAt: '', recentSchedule: '已发放录用意向书', nextAction: '确认薪资与入职时间', updatedAt: now - 15000 }
+      { id: cryptoId(), company: '腾讯科技', position: 'AI产品经理校招生', city: '深圳', applicationDate: new Date(now - 86400000 * 3).toISOString().slice(0, 10), stage: '一面', applicationUrl: 'https://careers.tencent.com', scheduleAt: new Date(now + 86400000 * 2).toISOString().slice(0, 16), recentSchedule: '腾讯会议专业面', nextAction: '复盘 Agent 架构项目经历，准备 3 分钟自我介绍', updatedAt: now - 3000 },
+      { id: cryptoId(), company: '字节跳动', position: '大模型应用产品经理', city: '北京', applicationDate: new Date(now - 86400000 * 8).toISOString().slice(0, 10), stage: '笔试', applicationUrl: 'https://jobs.bytedance.com', scheduleAt: new Date(now + 86400000 * 1).toISOString().slice(0, 16), recentSchedule: '在线专业笔试', nextAction: '复习产品分析案例与行测', updatedAt: now - 6000 },
+      { id: cryptoId(), company: '阿里巴巴', position: '算法工程师 (NLP/Agent)', city: '杭州', applicationDate: new Date(now - 86400000 * 12).toISOString().slice(0, 10), stage: '二面', applicationUrl: 'https://talent.alibaba.com', scheduleAt: new Date(now + 86400000 * 4).toISOString().slice(0, 16), recentSchedule: '总监业务面', nextAction: '深入准备多物理场仿真论文讲解', updatedAt: now - 10000 },
+      { id: cryptoId(), company: '美团', position: '商业化产品经理', city: '北京', applicationDate: new Date(now - 86400000 * 20).toISOString().slice(0, 10), stage: 'Offer', applicationUrl: 'https://zhaopin.meituan.com', scheduleAt: '', recentSchedule: '已发放录用意向书', nextAction: '确认薪资与入职时间', updatedAt: now - 15000 }
     ];
   }
 
@@ -317,11 +317,18 @@
       emptyEl.classList.remove('hidden');
     } else {
       emptyEl.classList.add('hidden');
-      tbody.innerHTML = filtered.map(r => `
+      tbody.innerHTML = filtered.map(r => {
+        const url = r.applicationUrl || r.url || '';
+        const hasUrl = /^https?:\/\//i.test(url);
+        const compHtml = hasUrl
+          ? `<a class="comp-name comp-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="点击跳转至网申/招聘原链接: ${escapeHtml(url)}">${escapeHtml(r.company)} <span class="link-icon" aria-hidden="true">↗</span></a>`
+          : `<span class="comp-name">${escapeHtml(r.company)}</span>`;
+
+        return `
         <tr>
           <td>
             <div class="comp-cell">
-              <span class="comp-name">${escapeHtml(r.company)}</span>
+              ${compHtml}
               <span class="comp-pos">${escapeHtml(r.position)}</span>
             </div>
           </td>
@@ -342,7 +349,8 @@
             </div>
           </td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
     }
 
     // 渲染右侧近期待办列表
@@ -360,13 +368,21 @@
       return;
     }
 
-    listEl.innerHTML = upcoming.slice(0, 5).map(r => `
+    listEl.innerHTML = upcoming.slice(0, 5).map(r => {
+      const url = r.applicationUrl || r.url || '';
+      const hasUrl = /^https?:\/\//i.test(url);
+      const titleHtml = hasUrl
+        ? `<a class="schedule-item-title comp-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="点击跳转至网申/招聘原链接: ${escapeHtml(url)}">${escapeHtml(r.company)} · ${escapeHtml(r.recentSchedule || '日程')} <span class="link-icon" aria-hidden="true">↗</span></a>`
+        : `<span class="schedule-item-title">${escapeHtml(r.company)} · ${escapeHtml(r.recentSchedule || '日程')}</span>`;
+
+      return `
       <div class="schedule-item">
         <span class="schedule-item-time">${r.scheduleAt.replace('T', ' ')}</span>
-        <span class="schedule-item-title">${escapeHtml(r.company)} · ${escapeHtml(r.recentSchedule || '日程')}</span>
+        ${titleHtml}
         ${r.nextAction ? `<span class="schedule-item-desc">${escapeHtml(r.nextAction)}</span>` : ''}
       </div>
-    `).join('');
+    `;
+    }).join('');
   }
 
   function escapeHtml(str) {

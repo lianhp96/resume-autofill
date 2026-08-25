@@ -399,6 +399,37 @@ h1 {
   font-weight: 700;
   color: var(--ink);
 }
+.comp-link {
+  color: var(--ink);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  width: fit-content;
+}
+.comp-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.comp-link .link-icon {
+  font-size: 11px;
+  color: var(--primary);
+  opacity: 0.65;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  font-weight: 800;
+}
+.comp-link:hover .link-icon {
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+.schedule-item-title.comp-link {
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+}
 .comp-pos {
   font-size: 12px;
   color: var(--muted);

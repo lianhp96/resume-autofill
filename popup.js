@@ -67,12 +67,15 @@ function renderAutofillSummary(report) {
   popupAutofillSummary.textContent = report
     ? AutumnAutofill.formatSummary(report)
     : '尚未填写当前页面';
-  const pending = (report?.items || []).filter(item => item.status === 'pending' || item.status === 'failed');
-  popupPendingBtn.hidden = pending.length === 0;
-  popupPendingBtn.textContent = `查看待处理字段（${pending.length}）`;
-  popupPendingList.replaceChildren(...pending.slice(0, 8).map(item => {
+  const items = report?.items || [];
+  const pendingCount = items.filter(item => item.status === 'pending' || item.status === 'failed').length;
+  popupPendingBtn.hidden = items.length === 0;
+  popupPendingBtn.dataset.pendingCount = String(pendingCount);
+  popupPendingBtn.textContent = `查看待处理字段（${pendingCount}）`;
+  popupPendingList.replaceChildren(...items.slice(0, 12).map(item => {
     const row = document.createElement('li');
-    row.textContent = `${item.label}：${item.reason}`;
+    const label = item.status === 'filled' ? '已填入' : item.status === 'skipped' ? '已跳过' : '待确认';
+    row.textContent = `${label} · ${item.label}：${item.reason}`;
     return row;
   }));
   popupPendingList.hidden = true;
@@ -104,8 +107,8 @@ popupAutofillBtn.addEventListener('click', async () => {
 popupPendingBtn.addEventListener('click', () => {
   popupPendingList.hidden = !popupPendingList.hidden;
   popupPendingBtn.textContent = popupPendingList.hidden
-    ? `查看待处理字段（${popupPendingList.children.length}）`
-    : '收起待处理字段';
+    ? `查看待处理字段（${popupPendingBtn.dataset.pendingCount || 0}）`
+    : '收起本次处理明细';
 });
 
 loadSettings().then(settings => {

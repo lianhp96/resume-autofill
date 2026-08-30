@@ -17,11 +17,24 @@
     <label>学历 <select name="degree"><option value="">请选择</option><option>本科</option><option>硕士</option><option>博士</option></select></label>
     <label>毕业日期 <input type="date" name="graduationDate"></label>
     <label>目标岗位 <input name="targetRole"></label>
+    <fieldset><legend>最高学历（radio）</legend><label><input type="radio" name="degreeRadio" value="本科">本科</label><label><input type="radio" name="degreeRadio" value="硕士">硕士</label></fieldset>
+    <label><input type="checkbox" name="是否愿意出差"> 是否愿意出差（明确保存的低风险问答）</label>
   </div>
+  <label>受控字段模拟 <input id="controlledEmail" name="email" type="email"><output id="controlledOutput"></output></label>
   <label>已存在值（应跳过） <input name="phone" value="用户已输入，请保留"></label>
   <label>验证码（应跳过） <input name="verificationCode" autocomplete="one-time-code"></label>
   <label>身份证号（应跳过） <input name="idNumber"></label>
   <label>上传简历（应跳过） <input type="file" name="resume"></label>
   <button type="submit">提交（扩展绝不会触发）</button>
+  <button type="button" id="addField">动态添加邮箱字段</button>
+  <script>
+    controlledEmail.addEventListener('input', event => { controlledOutput.textContent = `受控值：${event.target.value}`; });
+    addField.addEventListener('click', () => {
+      const label = document.createElement('label');
+      label.textContent = '动态插入字段（Email）';
+      label.append(Object.assign(document.createElement('input'), { type: 'email', name: 'email' }));
+      addField.before(label);
+    });
+  </script>
 </body>
 </html>

@@ -34,6 +34,15 @@
     </div>
   </section>
 
+  <section class="popup-autofill">
+    <button class="popup-autofill-btn" id="popupAutofillBtn">
+      <span>⚡</span><span>填写当前页面</span>
+    </button>
+    <p class="popup-autofill-summary" id="popupAutofillSummary">尚未填写当前页面</p>
+    <button class="popup-pending-btn" id="popupPendingBtn" hidden>查看待处理字段</button>
+    <ul class="popup-pending-list" id="popupPendingList" hidden></ul>
+  </section>
+
   <nav class="popup-nav">
     <button class="popup-nav-item is-primary" data-target="">
       <span class="nav-icon">📊</span>
@@ -79,6 +88,7 @@
     <p>在任意招聘网站按 <code>Ctrl+Shift+F</code> 可唤起侧边栏辅助填报与一键收录。</p>
   </footer>
 
+  <script src="autofill.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

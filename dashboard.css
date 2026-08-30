@@ -502,6 +502,38 @@ h1 {
 }
 
 /* ================= TAB 2: 简历资料库样式 ================= */
+.autofill-profile-card {
+  margin-bottom: 20px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f0fdf4, #f8fafc 58%);
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.autofill-profile-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.autofill-profile-kicker { color: #059669; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.autofill-profile-head h2 { margin-top: 2px; font-size: 18px; }
+.autofill-profile-head p:not(.autofill-profile-kicker) { margin-top: 4px; color: var(--muted); font-size: 13px; max-width: 620px; }
+.autofill-profile-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.autofill-profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.autofill-profile-grid fieldset { min-width: 0; border: 1px solid #d1fae5; border-radius: 10px; padding: 14px; background: rgba(255,255,255,.78); }
+.autofill-profile-grid legend { padding: 0 4px; color: #166534; font-size: 12px; font-weight: 800; }
+.autofill-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.autofill-field-grid label, .autofill-answer-label { display: flex; flex-direction: column; gap: 4px; color: var(--ink-secondary); font-size: 12px; font-weight: 600; }
+.autofill-field-grid input, .autofill-answer-label textarea { width: 100%; }
+.autofill-answer-label textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+@media (max-width: 900px) {
+  .autofill-profile-head { flex-direction: column; }
+  .autofill-profile-actions { justify-content: flex-start; }
+  .autofill-profile-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) { .autofill-field-grid { grid-template-columns: 1fr; } }
 .resume-toolbar {
   display: flex;
   align-items: center;

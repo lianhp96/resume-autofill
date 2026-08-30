@@ -328,6 +328,32 @@
     .capture-btn:active {
       transform: translateY(0);
     }
+    .autofill-card {
+      margin-bottom: 10px;
+      padding: 10px;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      background: #f0fdf4;
+    }
+    .autofill-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 10px;
+      border: 0;
+      border-radius: 7px;
+      background: #059669;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .autofill-btn:hover { background: #047857; }
+    .autofill-btn:disabled { opacity: .7; cursor: wait; }
+    .autofill-note { margin-top: 6px; color: #166534; font-size: 11px; line-height: 1.45; }
+    .autofill-result { margin-top: 8px; color: #166534; font-size: 11px; font-weight: 600; }
 
     /* 快速微调确认表单 */
     .capture-form {
@@ -585,6 +611,12 @@
       </div>
 
       <div class="drawer-body">
+        <div class="autofill-card">
+          <button class="autofill-btn" id="aja-autofill-btn"><span>⚡</span><span>填写当前页面</span></button>
+          <p class="autofill-note">仅填写高置信度字段，不覆盖已有内容，也不会填写验证码、证件或提交表单。</p>
+          <p class="autofill-result hidden" id="aja-autofill-result"></p>
+        </div>
+
         <!-- 一键收录岗位卡片 -->
         <div class="capture-card">
           <button class="capture-btn" id="aja-scan-btn">
@@ -666,6 +698,8 @@
   const closeBtn = shadow.getElementById('aja-close-btn');
   const dragHandle = shadow.getElementById('aja-drag-handle');
   const scanBtn = shadow.getElementById('aja-scan-btn');
+  const autofillBtn = shadow.getElementById('aja-autofill-btn');
+  const autofillResult = shadow.getElementById('aja-autofill-result');
   const captureForm = shadow.getElementById('aja-capture-form');
   const capCompany = shadow.getElementById('cap-company');
   const capPosition = shadow.getElementById('cap-position');
@@ -679,6 +713,45 @@
   const resumeListEl = shadow.getElementById('aja-resume-list');
   const openRecordsBtn = shadow.getElementById('aja-open-records-btn');
   const openResumeBtn = shadow.getElementById('aja-open-resume-btn');
+
+  function renderAutofillResult(report) {
+    if (!report || !report.summary) return;
+    autofillResult.textContent = AutumnAutofill.formatSummary(report);
+    autofillResult.classList.remove('hidden');
+  }
+
+  async function runAutofill() {
+    if (!globalThis.AutumnAutofill) {
+      showToast('一键填入模块未加载，请刷新页面后重试');
+      return { ok: false, message: 'autofill_unavailable' };
+    }
+    const originalHtml = autofillBtn.innerHTML;
+    autofillBtn.disabled = true;
+    autofillBtn.innerHTML = '<span>⏳</span><span>正在检查并填写...</span>';
+    try {
+      const report = await AutumnAutofill.fillPage();
+      renderAutofillResult(report);
+      showToast(AutumnAutofill.formatSummary(report));
+      return { ok: true, report };
+    } catch (error) {
+      console.warn('一键填入失败', error);
+      showToast('一键填入失败，请刷新页面后重试');
+      return { ok: false, message: String(error.message || error) };
+    } finally {
+      autofillBtn.disabled = false;
+      autofillBtn.innerHTML = originalHtml;
+    }
+  }
+
+  autofillBtn.addEventListener('click', runAutofill);
+
+  if (chrome.runtime?.onMessage) {
+    chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+      if (request.type !== 'RUN_AUTOFILL') return;
+      runAutofill().then(sendResponse);
+      return true;
+    });
+  }
 
   // ================= 渲染简历模块 =================
   function renderResumeSections(resume) {

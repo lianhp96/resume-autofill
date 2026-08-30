@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>一键填入 P0 本地验证表单</title>
+  <style>body{max-width:720px;margin:32px auto;font:16px system-ui}label{display:block;margin:14px 0}input,select,textarea{display:block;width:100%;padding:8px;margin-top:4px}.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}</style>
+</head>
+<body>
+  <h1>一键填入 P0 本地验证表单</h1>
+  <p>保存候选人资料后，在此页点击扩展的“填写当前页面”验证安全边界。</p>
+  <div class="row">
+    <label>姓名 <input name="fullName" autocomplete="name"></label>
+    <label>Email <input type="email" name="email" autocomplete="email"></label>
+    <label>手机号码 <input type="tel" name="phone" autocomplete="tel"></label>
+    <label>毕业院校 <input name="school"></label>
+    <label>所学专业 <input name="major"></label>
+    <label>学历 <select name="degree"><option value="">请选择</option><option>本科</option><option>硕士</option><option>博士</option></select></label>
+    <label>毕业日期 <input type="date" name="graduationDate"></label>
+    <label>目标岗位 <input name="targetRole"></label>
+  </div>
+  <label>已存在值（应跳过） <input name="phone" value="用户已输入，请保留"></label>
+  <label>验证码（应跳过） <input name="verificationCode" autocomplete="one-time-code"></label>
+  <label>身份证号（应跳过） <input name="idNumber"></label>
+  <label>上传简历（应跳过） <input type="file" name="resume"></label>
+  <button type="submit">提交（扩展绝不会触发）</button>
+</body>
+</html>

@@ -86,6 +86,30 @@ button { font: inherit; cursor: pointer; }
   color: var(--muted);
 }
 
+.popup-autofill {
+  margin: 0 16px 12px;
+  padding: 10px;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  background: var(--green-soft);
+}
+.popup-autofill-btn {
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--green);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+.popup-autofill-btn:hover { background: #059669; }
+.popup-autofill-btn:disabled { opacity: .7; cursor: wait; }
+.popup-autofill-summary { margin-top: 7px; color: #166534; font-size: 11px; text-align: center; }
+.popup-pending-btn { display: block; width: 100%; margin-top: 7px; padding: 5px; border: 1px solid #86efac; border-radius: 6px; background: #fff; color: #166534; font-size: 11px; font-weight: 700; }
+.popup-pending-list { margin: 7px 2px 0; padding-left: 16px; color: #854d0e; font-size: 11px; }
+.popup-pending-list li + li { margin-top: 3px; }
+
 .popup-nav {
   display: flex;
   flex-direction: column;

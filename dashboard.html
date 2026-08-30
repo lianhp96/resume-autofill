@@ -173,61 +173,6 @@
 
       <!-- ================= TAB 2: 我的简历资料库 ================= -->
       <section class="tab-content" id="resume-tab">
-        <section class="autofill-profile-card" aria-labelledby="autofillProfileTitle">
-          <div class="autofill-profile-head">
-            <div>
-              <p class="autofill-profile-kicker">P0 · SAFE AUTOFILL</p>
-              <h2 id="autofillProfileTitle">一键填入资料</h2>
-              <p>仅用于“填写当前页面”。高置信度字段才会自动写入；不会覆盖已有内容或处理敏感问题。</p>
-            </div>
-            <div class="autofill-profile-actions">
-              <button class="btn" id="candidateProfileExportBtn">导出资料 JSON</button>
-              <button class="btn" id="candidateProfileImportBtn">导入资料 JSON</button>
-              <button class="btn btn-danger" id="candidateProfileClearBtn">清空资料</button>
-              <button class="btn btn-primary" id="candidateProfileSaveBtn">保存一键填入资料</button>
-              <input type="file" id="candidateProfileFileInput" accept=".json,application/json" hidden>
-            </div>
-          </div>
-          <div class="autofill-profile-grid">
-            <fieldset>
-              <legend>联系方式</legend>
-              <div class="autofill-field-grid">
-                <label>姓名<input id="autofill-fullName" type="text" autocomplete="name"></label>
-                <label>名（英文表单）<input id="autofill-firstName" type="text" autocomplete="given-name"></label>
-                <label>姓（英文表单）<input id="autofill-lastName" type="text" autocomplete="family-name"></label>
-                <label>手机<input id="autofill-phone" type="tel" autocomplete="tel"></label>
-                <label>邮箱<input id="autofill-email" type="email" autocomplete="email"></label>
-                <label>当前城市<input id="autofill-city" type="text"></label>
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>链接与求职偏好</legend>
-              <div class="autofill-field-grid">
-                <label>GitHub<input id="autofill-github" type="url"></label>
-                <label>个人主页 / 作品集<input id="autofill-portfolio" type="url"></label>
-                <label>LinkedIn<input id="autofill-linkedin" type="url"></label>
-                <label>目标岗位<input id="autofill-targetRole" type="text"></label>
-                <label>目标城市<input id="autofill-targetCity" type="text"></label>
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>最高学历（第一段教育经历）</legend>
-              <div class="autofill-field-grid">
-                <label>学校<input id="autofill-school" type="text"></label>
-                <label>专业<input id="autofill-major" type="text"></label>
-                <label>学历 / 学位<input id="autofill-degree" type="text"></label>
-                <label>毕业日期<input id="autofill-graduationDate" type="date"></label>
-              </div>
-            </fieldset>
-            <fieldset>
-              <legend>已明确保存的低风险问答</legend>
-              <label class="autofill-answer-label">JSON 对象（例如 {"是否愿意出差": true}）
-                <textarea id="autofill-answers" rows="4" spellcheck="false" placeholder="{}"></textarea>
-              </label>
-            </fieldset>
-          </div>
-        </section>
-
         <div class="resume-toolbar">
           <div class="resume-toolbar-left">
             <p>在此维护你的个人求职信息，数据将实时同步至网页端侧边栏。支持自定义添加任意字段与多段经历。</p>
@@ -533,7 +478,6 @@
   <script src="./ocr/tesseract.min.js"></script>
   <script src="./ocr/chi_sim-data.js"></script>
   <!-- 看板核心逻辑 -->
-  <script src="autofill.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>

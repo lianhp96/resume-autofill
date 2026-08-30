@@ -103,7 +103,6 @@
   // ================= 全局状态 =================
   let records = [];
   let currentResume = DEFAULT_RESUME;
-  let currentCandidateProfile = null;
   let editingRecordId = null;
   let ocrWorker = null;
   let ocrFile = null;
@@ -508,122 +507,6 @@
   });
 
   // ================= TAB 2: 简历资料库管理核心逻辑 =================
-  function candidateProfileFromEditor() {
-    let answers = {};
-    const answersRaw = $('#autofill-answers').value.trim();
-    if (answersRaw) {
-      try {
-        answers = JSON.parse(answersRaw);
-      } catch (_) {
-        throw new Error('低风险问答必须是有效的 JSON 对象');
-      }
-      if (!answers || Array.isArray(answers) || typeof answers !== 'object') {
-        throw new Error('低风险问答必须是 JSON 对象');
-      }
-    }
-    return AutumnAutofill.normalizeProfile({
-      personal: {
-        fullName: $('#autofill-fullName').value,
-        firstName: $('#autofill-firstName').value,
-        lastName: $('#autofill-lastName').value,
-        phone: $('#autofill-phone').value,
-        email: $('#autofill-email').value,
-        city: $('#autofill-city').value
-      },
-      links: {
-        github: $('#autofill-github').value,
-        portfolio: $('#autofill-portfolio').value,
-        linkedin: $('#autofill-linkedin').value
-      },
-      education: [{
-        school: $('#autofill-school').value,
-        major: $('#autofill-major').value,
-        degree: $('#autofill-degree').value,
-        graduationDate: $('#autofill-graduationDate').value
-      }],
-      preferences: {
-        targetRole: $('#autofill-targetRole').value,
-        targetCity: $('#autofill-targetCity').value
-      },
-      answers
-    });
-  }
-
-  function renderCandidateProfile(profile) {
-    currentCandidateProfile = AutumnAutofill.normalizeProfile(profile);
-    const { personal, links, education, preferences, answers } = currentCandidateProfile;
-    $('#autofill-fullName').value = personal.fullName;
-    $('#autofill-firstName').value = personal.firstName;
-    $('#autofill-lastName').value = personal.lastName;
-    $('#autofill-phone').value = personal.phone;
-    $('#autofill-email').value = personal.email;
-    $('#autofill-city').value = personal.city;
-    $('#autofill-github').value = links.github;
-    $('#autofill-portfolio').value = links.portfolio;
-    $('#autofill-linkedin').value = links.linkedin;
-    $('#autofill-school').value = education[0].school;
-    $('#autofill-major').value = education[0].major;
-    $('#autofill-degree').value = education[0].degree;
-    $('#autofill-graduationDate').value = education[0].graduationDate;
-    $('#autofill-targetRole').value = preferences.targetRole;
-    $('#autofill-targetCity').value = preferences.targetCity;
-    $('#autofill-answers').value = Object.keys(answers).length ? JSON.stringify(answers, null, 2) : '';
-  }
-
-  async function loadCandidateProfile() {
-    renderCandidateProfile(await AutumnAutofill.getProfile());
-  }
-
-  async function saveCandidateProfile() {
-    try {
-      currentCandidateProfile = await AutumnAutofill.saveProfile(candidateProfileFromEditor());
-      renderCandidateProfile(currentCandidateProfile);
-      showToast('一键填入资料已保存，仅会在你主动点击填写时使用');
-    } catch (error) {
-      showToast(error.message || '资料保存失败');
-    }
-  }
-
-  $('#candidateProfileSaveBtn').addEventListener('click', saveCandidateProfile);
-  $('#candidateProfileExportBtn').addEventListener('click', () => {
-    try {
-      const profile = candidateProfileFromEditor();
-      const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `candidate_profile_${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('一键填入资料已导出');
-    } catch (error) {
-      showToast(error.message || '导出失败');
-    }
-  });
-  $('#candidateProfileImportBtn').addEventListener('click', () => $('#candidateProfileFileInput').click());
-  $('#candidateProfileFileInput').addEventListener('change', event => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        currentCandidateProfile = await AutumnAutofill.saveProfile(JSON.parse(reader.result));
-        renderCandidateProfile(currentCandidateProfile);
-        showToast('一键填入资料已导入');
-      } catch (error) {
-        showToast(error.message || '导入失败：请选择有效 JSON 文件');
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
-  });
-  $('#candidateProfileClearBtn').addEventListener('click', async () => {
-    if (!window.confirm('确定清空一键填入资料吗？这不会影响现有简历资料库。')) return;
-    currentCandidateProfile = await AutumnAutofill.clearProfile();
-    renderCandidateProfile(currentCandidateProfile);
-    showToast('一键填入资料已清空');
-  });
-
   async function loadResume() {
     const saved = await storageGet(RESUME_STORAGE_KEY);
     if (saved && typeof saved === 'object') {
@@ -1460,7 +1343,6 @@
   async function init() {
     handleUrlHash();
     await loadRecords();
-    await loadCandidateProfile();
     await loadResume();
     await loadLlmConfig();
     await loadLlmLogs();

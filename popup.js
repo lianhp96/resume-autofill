@@ -34,31 +34,41 @@ document.querySelectorAll('.popup-nav-item').forEach(item => {
   });
 });
 
-async function loadCapsuleSetting() {
+async function loadSettings() {
   try {
     const res = await chrome.storage.local.get([SETTINGS_STORAGE_KEY]);
-    return res[SETTINGS_STORAGE_KEY]?.capsuleEnabled !== false;
+    return res[SETTINGS_STORAGE_KEY] || {};
   } catch (err) {
-    console.error('读取悬浮助手设置失败', err);
-    return true;
+    console.error('读取设置失败', err);
+    return {};
+  }
+}
+
+async function persistSetting(key, value, revertEl) {
+  try {
+    const settings = await loadSettings();
+    settings[key] = value;
+    await chrome.storage.local.set({ [SETTINGS_STORAGE_KEY]: settings });
+  } catch (err) {
+    console.error('保存设置失败', err);
+    revertEl.checked = !revertEl.checked;
   }
 }
 
 const capsuleToggle = document.getElementById('capsuleToggle');
+const freeDragToggle = document.getElementById('freeDragToggle');
 
-loadCapsuleSetting().then(enabled => {
-  capsuleToggle.checked = enabled;
+loadSettings().then(settings => {
+  capsuleToggle.checked = settings.capsuleEnabled !== false;
+  freeDragToggle.checked = settings.capsuleFreeDrag === true;
 });
 
-capsuleToggle.addEventListener('change', async () => {
-  try {
-    await chrome.storage.local.set({
-      [SETTINGS_STORAGE_KEY]: { capsuleEnabled: capsuleToggle.checked }
-    });
-  } catch (err) {
-    console.error('保存悬浮助手设置失败', err);
-    capsuleToggle.checked = !capsuleToggle.checked;
-  }
+capsuleToggle.addEventListener('change', () => {
+  persistSetting('capsuleEnabled', capsuleToggle.checked, capsuleToggle);
+});
+
+freeDragToggle.addEventListener('change', () => {
+  persistSetting('capsuleFreeDrag', freeDragToggle.checked, freeDragToggle);
 });
 
 loadStats().then(renderStats);

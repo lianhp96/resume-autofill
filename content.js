@@ -136,6 +136,7 @@
       box-shadow: 0 4px 16px rgba(64, 83, 203, 0.35);
       cursor: pointer;
       user-select: none;
+      touch-action: none;
       transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
     #aja-toggle:hover {
@@ -146,17 +147,30 @@
     #aja-toggle.hidden {
       display: none;
     }
+    #aja-toggle.dragging {
+      opacity: 0.55;
+      transition: none;
+    }
+    #aja-toggle.free {
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 4px 16px rgba(64, 83, 203, 0.35);
+    }
+    #aja-toggle.snap-left {
+      border-radius: 0 20px 20px 0;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-left: none;
+      box-shadow: -4px 4px 16px rgba(64, 83, 203, 0.35);
+    }
 
     /* 侧边滑出抽屉面板 */
     #aja-drawer {
       position: fixed;
       top: 20px;
       right: 20px;
-      bottom: 20px;
       width: 350px;
-      max-height: calc(100vh - 40px);
-      z-index: 2147483647;
-      display: flex;
+      max-height: min(620px, calc(100vh - 40px));
+      z-index: 2147483647;      display: flex;
       flex-direction: column;
       background: rgba(255, 255, 255, 0.98);
       backdrop-filter: blur(16px);
@@ -172,6 +186,13 @@
       transform: translateX(calc(100% + 30px));
       opacity: 0;
       pointer-events: none;
+    }
+    #aja-drawer.dragging {
+      transition: none;
+      opacity: 0.96;
+    }
+    #aja-drawer.edge {
+      max-height: min(75vh, calc(100vh - 40px));
     }
 
     /* 顶部标题栏 */
@@ -781,25 +802,33 @@
   // ================= 交互事件绑定 =================
   let isCollapsed = true;
   let capsuleEnabled = true;
+  let capsuleFreeDrag = false;
+  let capsulePos = null;
 
   function applyCapsuleVisibility() {
     toggleBtn.classList.toggle('hidden', !capsuleEnabled || !isCollapsed);
   }
 
+  function absorbSettings(settings) {
+    capsuleEnabled = settings?.capsuleEnabled !== false;
+    capsuleFreeDrag = settings?.capsuleFreeDrag === true;
+    capsulePos = (settings?.capsulePos && typeof settings.capsulePos.y === 'number') ? settings.capsulePos : null;
+    applyCapsuleVisibility();
+    applyCapsulePosition();
+  }
+
   async function loadCapsuleSetting() {
     try {
       const res = await chrome.storage.local.get([SETTINGS_STORAGE_KEY]);
-      capsuleEnabled = res[SETTINGS_STORAGE_KEY]?.capsuleEnabled !== false;
+      absorbSettings(res[SETTINGS_STORAGE_KEY]);
     } catch (_) {
-      capsuleEnabled = true;
+      absorbSettings(null);
     }
-    applyCapsuleVisibility();
   }
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes[SETTINGS_STORAGE_KEY]) {
-      capsuleEnabled = changes[SETTINGS_STORAGE_KEY].newValue?.capsuleEnabled !== false;
-      applyCapsuleVisibility();
+      absorbSettings(changes[SETTINGS_STORAGE_KEY].newValue);
     }
   });
 
@@ -809,13 +838,13 @@
       drawer.classList.add('collapsed');
     } else {
       drawer.classList.remove('collapsed');
+      placeDrawerNearCapsule();
     }
     applyCapsuleVisibility();
   }
 
   loadCapsuleSetting();
 
-  toggleBtn.addEventListener('click', () => toggleDrawer(true));
   closeBtn.addEventListener('click', () => toggleDrawer(false));
 
   // 快捷键 Ctrl+Shift+F
@@ -980,27 +1009,243 @@
     }, 2000);
   }
 
-  // 悬浮胶囊垂直拖拽定位
-  let isDraggingToggle = false;
-  let toggleStartY = 0;
-  let toggleStartTop = 0;
+  // ================= 悬浮胶囊 / 抽屉拖拽（自由拖拽 + 吸边 + 位置记忆） =================
+  const SNAP_THRESHOLD = 24;
+  const DRAG_THRESHOLD = 5;
 
-  toggleBtn.addEventListener('mousedown', (e) => {
-    isDraggingToggle = true;
-    toggleStartY = e.clientY;
-    toggleStartTop = toggleBtn.getBoundingClientRect().top;
+  let dragCtx = null;
+  let suppressNextClick = false;
+
+  function clamp(v, min, max) {
+    return Math.min(Math.max(v, min), max);
+  }
+
+  async function mergeSettings(patch) {
+    const res = await chrome.storage.local.get([SETTINGS_STORAGE_KEY]);
+    const settings = res[SETTINGS_STORAGE_KEY] || {};
+    Object.assign(settings, patch);
+    await chrome.storage.local.set({ [SETTINGS_STORAGE_KEY]: settings });
+    return settings;
+  }
+
+  function applyCapsulePosition() {
+    toggleBtn.classList.remove('free', 'snap-left');
+    if (!capsuleFreeDrag || !capsulePos) {
+      toggleBtn.style.left = '';
+      toggleBtn.style.right = '';
+      toggleBtn.style.top = '';
+      return;
+    }
+    const { x, y, snap } = capsulePos;
+    toggleBtn.style.top = `${y}px`;
+    if (snap === 'right') {
+      toggleBtn.style.left = '';
+      toggleBtn.style.right = '0';
+    } else if (snap === 'left') {
+      toggleBtn.style.right = 'auto';
+      toggleBtn.style.left = '0';
+      toggleBtn.classList.add('snap-left');
+    } else {
+      toggleBtn.style.right = 'auto';
+      toggleBtn.style.left = `${x}px`;
+      toggleBtn.classList.add('free');
+    }
+  }
+
+  const DRAWER_EDGE_GAP = 12;
+
+  function syncDrawerEdgeClass() {
+    const rect = drawer.getBoundingClientRect();
+    const atEdge = rect.left <= SNAP_THRESHOLD || (window.innerWidth - rect.right) <= SNAP_THRESHOLD;
+    drawer.classList.toggle('edge', atEdge);
+  }
+
+  function placeDrawerNearCapsule() {
+    const rect = drawer.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    const capRect = toggleBtn.getBoundingClientRect();
+    const y = clamp(capRect.top, DRAWER_EDGE_GAP, Math.max(DRAWER_EDGE_GAP, window.innerHeight - h - DRAWER_EDGE_GAP));
+    let x;
+    const nearRight = window.innerWidth - capRect.right <= SNAP_THRESHOLD;
+    const nearLeft = capRect.left <= SNAP_THRESHOLD;
+    if (nearRight) {
+      x = window.innerWidth - w - DRAWER_EDGE_GAP;
+    } else if (nearLeft) {
+      x = DRAWER_EDGE_GAP;
+    } else {
+      x = capRect.right + DRAWER_EDGE_GAP;
+      if (x + w > window.innerWidth - DRAWER_EDGE_GAP) {
+        x = capRect.left - w - DRAWER_EDGE_GAP;
+      }
+    }
+    x = clamp(x, DRAWER_EDGE_GAP, Math.max(DRAWER_EDGE_GAP, window.innerWidth - w - DRAWER_EDGE_GAP));
+    drawer.style.right = 'auto';
+    drawer.style.bottom = 'auto';
+    drawer.style.left = `${x}px`;
+    drawer.style.top = `${y}px`;
+    syncDrawerEdgeClass();
+  }
+
+  function persistCapsulePos() {
+    (async () => {
+      try { await mergeSettings({ capsulePos }); } catch (_) {}
+    })();
+  }
+
+  toggleBtn.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const rect = toggleBtn.getBoundingClientRect();
+    dragCtx = {
+      id: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      origLeft: rect.left,
+      origTop: rect.top,
+      width: rect.width,
+      height: rect.height,
+      moved: false
+    };
+    try { toggleBtn.setPointerCapture(e.pointerId); } catch (_) {}
     e.preventDefault();
   });
 
-  document.addEventListener('mousemove', (e) => {
-    if (!isDraggingToggle) return;
-    const dy = e.clientY - toggleStartY;
-    const newTop = Math.min(Math.max(20, toggleStartTop + dy), window.innerHeight - 60);
-    toggleBtn.style.top = `${newTop}px`;
+  toggleBtn.addEventListener('pointermove', (e) => {
+    if (!dragCtx || e.pointerId !== dragCtx.id) return;
+    const dx = e.clientX - dragCtx.startX;
+    const dy = e.clientY - dragCtx.startY;
+    if (!dragCtx.moved) {
+      if (Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+      dragCtx.moved = true;
+      toggleBtn.classList.add('dragging');
+      toggleBtn.classList.remove('snap-left');
+    }
+    const maxX = window.innerWidth - dragCtx.width;
+    const maxY = window.innerHeight - dragCtx.height - 8;
+    const ny = Math.min(Math.max(8, dragCtx.origTop + dy), Math.max(8, maxY));
+    if (capsuleFreeDrag) {
+      const nx = Math.min(Math.max(0, dragCtx.origLeft + dx), Math.max(0, maxX));
+      toggleBtn.classList.add('free');
+      toggleBtn.style.right = 'auto';
+      toggleBtn.style.left = `${nx}px`;
+      toggleBtn.style.top = `${ny}px`;
+    } else {
+      toggleBtn.style.top = `${ny}px`;
+    }
   });
 
-  document.addEventListener('mouseup', () => {
-    isDraggingToggle = false;
+  function endDrag(e) {
+    if (!dragCtx || (e.pointerId !== undefined && e.pointerId !== dragCtx.id)) return;
+    const { moved } = dragCtx;
+    dragCtx = null;
+    toggleBtn.classList.remove('dragging');
+    if (!moved) return;
+    suppressNextClick = true;
+    const rect = toggleBtn.getBoundingClientRect();
+    let x = rect.left;
+    let snap = null;
+    if (capsuleFreeDrag) {
+      if (rect.left <= SNAP_THRESHOLD) {
+        snap = 'left';
+        x = 0;
+      } else if (window.innerWidth - rect.right <= SNAP_THRESHOLD) {
+        snap = 'right';
+        x = window.innerWidth - rect.width;
+      }
+    }
+    capsulePos = { x, y: rect.top, snap };
+    applyCapsulePosition();
+    persistCapsulePos();
+  }
+
+  toggleBtn.addEventListener('pointerup', endDrag);
+  toggleBtn.addEventListener('pointercancel', endDrag);
+
+  toggleBtn.addEventListener('click', () => {
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      return;
+    }
+    toggleDrawer(true);
+  });
+
+  // ---- 抽屉窗口拖拽（按住标题栏拖动到任意位置） ----
+  let drawerDragCtx = null;
+
+  dragHandle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('.close-btn')) return;
+    const rect = drawer.getBoundingClientRect();
+    drawerDragCtx = {
+      id: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      origLeft: rect.left,
+      origTop: rect.top,
+      moved: false
+    };
+    try { dragHandle.setPointerCapture(e.pointerId); } catch (_) {}
+    e.preventDefault();
+  });
+
+  dragHandle.addEventListener('pointermove', (e) => {
+    if (!drawerDragCtx || e.pointerId !== drawerDragCtx.id) return;
+    const dx = e.clientX - drawerDragCtx.startX;
+    const dy = e.clientY - drawerDragCtx.startY;
+    if (!drawerDragCtx.moved) {
+      if (Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+      drawerDragCtx.moved = true;
+      drawer.classList.add('dragging');
+    }
+    const rect = drawer.getBoundingClientRect();
+    const nx = clamp(drawerDragCtx.origLeft + dx, 20 - rect.width, window.innerWidth - 20);
+    const ny = clamp(drawerDragCtx.origTop + dy, 12, window.innerHeight - 48);
+    drawer.style.right = 'auto';
+    drawer.style.bottom = 'auto';
+    drawer.style.left = `${nx}px`;
+    drawer.style.top = `${ny}px`;
+  });
+
+  function endDrawerDrag(e) {
+    if (!drawerDragCtx || (e.pointerId !== undefined && e.pointerId !== drawerDragCtx.id)) return;
+    const { moved } = drawerDragCtx;
+    drawerDragCtx = null;
+    drawer.classList.remove('dragging');
+    if (!moved) return;
+    const rect = drawer.getBoundingClientRect();
+    let x = rect.left;
+    if (rect.left <= SNAP_THRESHOLD) {
+      x = DRAWER_EDGE_GAP;
+    } else if (window.innerWidth - rect.right <= SNAP_THRESHOLD) {
+      x = window.innerWidth - rect.width - DRAWER_EDGE_GAP;
+    }
+    const y = clamp(rect.top, DRAWER_EDGE_GAP, Math.max(DRAWER_EDGE_GAP, window.innerHeight - rect.height - DRAWER_EDGE_GAP));
+    drawer.style.left = `${x}px`;
+    drawer.style.top = `${y}px`;
+    syncDrawerEdgeClass();
+  }
+
+  dragHandle.addEventListener('pointerup', endDrawerDrag);
+  dragHandle.addEventListener('pointercancel', endDrawerDrag);
+
+  // ---- 窗口缩放时把胶囊位置钳制、抽屉钳回可视区 ----
+  window.addEventListener('resize', () => {
+    if (capsuleFreeDrag && capsulePos) {
+      const rect = toggleBtn.getBoundingClientRect();
+      const maxX = Math.max(0, window.innerWidth - rect.width);
+      const maxY = Math.max(8, window.innerHeight - rect.height - 8);
+      capsulePos.x = clamp(capsulePos.x, 0, maxX);
+      capsulePos.y = clamp(capsulePos.y, 8, maxY);
+      applyCapsulePosition();
+    }
+    if (!isCollapsed) {
+      const rect = drawer.getBoundingClientRect();
+      const x = clamp(rect.left, DRAWER_EDGE_GAP - rect.width, window.innerWidth - DRAWER_EDGE_GAP);
+      const y = clamp(rect.top, DRAWER_EDGE_GAP, Math.max(DRAWER_EDGE_GAP, window.innerHeight - rect.height - DRAWER_EDGE_GAP));
+      drawer.style.left = `${x}px`;
+      drawer.style.top = `${y}px`;
+      syncDrawerEdgeClass();
+    }
   });
 
   console.log('🚀 [简历投递与进度管理助手] Shadow DOM 侧边栏已挂载。按 Ctrl+Shift+F 唤起。');

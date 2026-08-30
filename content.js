@@ -1,5 +1,5 @@
 /**
- * 秋招求职与简历助手 - Content Script
+ * 简历投递与进度管理助手 - Content Script
  * 采用 Shadow DOM 隔离技术，保证与宿主网页样式 100% 零冲突
  */
 
@@ -511,9 +511,9 @@
   // ================= 构建 DOM 结构 =================
   const wrapper = document.createElement('div');
   wrapper.innerHTML = `
-    <div id="aja-toggle" title="展开秋招求职助手 (Ctrl+Shift+F)">
+    <div id="aja-toggle" title="展开投递助手 (Ctrl+Shift+F)">
       <span>📝</span>
-      <span>简历助手</span>
+      <span>投递助手</span>
     </div>
 
     <div id="aja-drawer" class="collapsed">
@@ -977,5 +977,5 @@
     isDraggingToggle = false;
   });
 
-  console.log('🚀 [秋招求职与简历助手] Shadow DOM 侧边栏已挂载。按 Ctrl+Shift+F 唤起。');
+  console.log('🚀 [简历投递与进度管理助手] Shadow DOM 侧边栏已挂载。按 Ctrl+Shift+F 唤起。');
 })();

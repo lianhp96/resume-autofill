@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "秋招求职与简历助手",
+  "name": "简历投递与进度管理助手",
   "version": "2.0.0",
   "description": "秋招网申全链路提效工具：网申表单快速填报、岗位一键提取收录、全屏投递管理看板与可视化简历资料库。",
   "icons": {
@@ -23,7 +23,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "打开秋招投递管理看板",
+    "default_title": "打开简历投递与进度管理看板",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

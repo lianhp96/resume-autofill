@@ -1,5 +1,5 @@
 /**
- * 秋招求职与简历助手 - Background Service Worker
+ * 简历投递与进度管理助手 - Background Service Worker
  */
 
 const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';

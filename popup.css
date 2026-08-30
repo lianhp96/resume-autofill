@@ -1,0 +1,217 @@
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-soft: #f1f5f9;
+  --ink: #0f172a;
+  --ink-secondary: #334155;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --primary: #4f64ee;
+  --primary-dark: #3d51cc;
+  --primary-soft: #eff2fe;
+  --green: #10b981;
+  --green-soft: #ecfdf5;
+  --shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 328px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.5;
+}
+
+button { font: inherit; cursor: pointer; }
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #4f64ee, #3b4cb8);
+  color: #fff;
+  font-size: 20px;
+  box-shadow: 0 4px 12px rgba(79, 100, 238, 0.3);
+  flex-shrink: 0;
+}
+.brand-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.brand-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.popup-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 12px 16px;
+}
+.mini-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.mini-stat-num {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+.mini-stat-offer { color: var(--green); }
+.mini-stat-label {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.popup-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 12px 12px;
+}
+.popup-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+.popup-nav-item:hover {
+  background: var(--surface-soft);
+  color: var(--primary);
+}
+.popup-nav-item.is-primary {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.popup-nav-item.is-primary:hover {
+  background: #e3e8fd;
+}
+.nav-icon {
+  font-size: 15px;
+  display: grid;
+  place-items: center;
+}
+.nav-label { flex: 1; }
+.nav-arrow {
+  font-size: 12px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all 0.15s ease;
+}
+.popup-nav-item:hover .nav-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.popup-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.setting-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+.setting-desc {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  inset: 0;
+  background: #cbd5e1;
+  border-radius: 20px;
+  transition: background 0.2s ease;
+}
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  transition: transform 0.2s ease;
+}
+.switch input:checked + .slider {
+  background: var(--primary);
+}
+.switch input:checked + .slider::before {
+  transform: translateX(16px);
+}
+
+.popup-footer {
+  margin: 0 16px 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 11px;
+}
+.popup-footer strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+.popup-footer code {
+  background: rgba(22, 101, 52, 0.12);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-weight: bold;
+}

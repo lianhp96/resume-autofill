@@ -11,6 +11,7 @@
 
   const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
   const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
+  const SETTINGS_STORAGE_KEY = 'autumnRecruitmentTracker.settings.v1';
 
   // ================= 默认简历备用种子数据 =================
   const DEFAULT_RESUME = {
@@ -594,6 +595,7 @@
 
   // ================= 获取 DOM 元素 =================
   const toggleBtn = shadow.getElementById('aja-toggle');
+  toggleBtn.classList.add('hidden');
   const drawer = shadow.getElementById('aja-drawer');
   const closeBtn = shadow.getElementById('aja-close-btn');
   const dragHandle = shadow.getElementById('aja-drag-handle');
@@ -778,16 +780,40 @@
 
   // ================= 交互事件绑定 =================
   let isCollapsed = true;
+  let capsuleEnabled = true;
+
+  function applyCapsuleVisibility() {
+    toggleBtn.classList.toggle('hidden', !capsuleEnabled || !isCollapsed);
+  }
+
+  async function loadCapsuleSetting() {
+    try {
+      const res = await chrome.storage.local.get([SETTINGS_STORAGE_KEY]);
+      capsuleEnabled = res[SETTINGS_STORAGE_KEY]?.capsuleEnabled !== false;
+    } catch (_) {
+      capsuleEnabled = true;
+    }
+    applyCapsuleVisibility();
+  }
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[SETTINGS_STORAGE_KEY]) {
+      capsuleEnabled = changes[SETTINGS_STORAGE_KEY].newValue?.capsuleEnabled !== false;
+      applyCapsuleVisibility();
+    }
+  });
+
   function toggleDrawer(open) {
     isCollapsed = typeof open === 'boolean' ? !open : !isCollapsed;
     if (isCollapsed) {
       drawer.classList.add('collapsed');
-      toggleBtn.classList.remove('hidden');
     } else {
       drawer.classList.remove('collapsed');
-      toggleBtn.classList.add('hidden');
     }
+    applyCapsuleVisibility();
   }
+
+  loadCapsuleSetting();
 
   toggleBtn.addEventListener('click', () => toggleDrawer(true));
   closeBtn.addEventListener('click', () => toggleDrawer(false));

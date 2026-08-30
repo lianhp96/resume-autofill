@@ -11,7 +11,7 @@
   const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
   const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
   const SAFETY_DB_NAME = 'autumnRecruitmentTracker.safety.v1';
-  const APP_VERSION = '2.0.0';
+  const APP_VERSION = '2.1.0';
 
   // 默认示例简历种子
   const DEFAULT_RESUME = {

@@ -112,11 +112,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 });
 
-// 点击扩展图标 -> 直接打开投递管理看板
-chrome.action.onClicked.addListener(() => {
-  openOrFocusDashboard();
-});
-
 // 监听各页面消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'OPEN_DASHBOARD') {

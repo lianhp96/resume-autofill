@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light">
+  <title>简历投递与进度管理助手</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="popup-header">
+    <div class="brand-mark">🚀</div>
+    <div class="brand-text">
+      <div class="brand-title">简历投递与进度管理助手</div>
+      <div class="brand-subtitle">求职提效一体化系统 v2.1</div>
+    </div>
+  </header>
+
+  <section class="popup-stats">
+    <div class="mini-stat">
+      <span class="mini-stat-num" id="popupTotal">0</span>
+      <span class="mini-stat-label">总投递</span>
+    </div>
+    <div class="mini-stat">
+      <span class="mini-stat-num" id="popupToday">0</span>
+      <span class="mini-stat-label">今日投递</span>
+    </div>
+    <div class="mini-stat">
+      <span class="mini-stat-num" id="popupActive">0</span>
+      <span class="mini-stat-label">进行中</span>
+    </div>
+    <div class="mini-stat">
+      <span class="mini-stat-num mini-stat-offer" id="popupOffer">0</span>
+      <span class="mini-stat-label">Offer</span>
+    </div>
+  </section>
+
+  <nav class="popup-nav">
+    <button class="popup-nav-item is-primary" data-target="">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">投递追踪看板</span>
+      <span class="nav-arrow">→</span>
+    </button>
+    <button class="popup-nav-item" data-target="#resume">
+      <span class="nav-icon">📝</span>
+      <span class="nav-label">我的简历资料库</span>
+      <span class="nav-arrow">→</span>
+    </button>
+    <button class="popup-nav-item" data-target="#safety">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">数据安全与备份</span>
+      <span class="nav-arrow">→</span>
+    </button>
+  </nav>
+
+  <section class="popup-setting">
+    <div class="setting-text">
+      <div class="setting-title">网页悬浮助手</div>
+      <div class="setting-desc">在网页右侧显示“投递助手”胶囊入口</div>
+    </div>
+    <label class="switch" title="切换悬浮胶囊显示">
+      <input type="checkbox" id="capsuleToggle" checked>
+      <span class="slider"></span>
+    </label>
+  </section>
+
+  <footer class="popup-footer">
+    <strong>💡 提示</strong>
+    <p>在任意招聘网站按 <code>Ctrl+Shift+F</code> 可唤起侧边栏辅助填报与一键收录。</p>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

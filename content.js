@@ -12,6 +12,9 @@
   const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
   const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
   const SETTINGS_STORAGE_KEY = 'autumnRecruitmentTracker.settings.v1';
+  const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
+  const VALID_STAGES = ['待投递', '已投递', '笔试', '一面', '二面', 'HR面', 'Offer', '已结束'];
+  const RESUME_SECTION_ORDER = ['优先信息', '基本信息', '教育经历', '实习经历', '项目经历', '竞赛与技能'];
 
   // ================= 默认简历备用种子数据 =================
   const DEFAULT_RESUME = {
@@ -275,6 +278,7 @@
       padding: 10px;
     }
     .capture-btn {
+      position: relative;
       width: 100%;
       display: flex;
       align-items: center;
@@ -289,6 +293,33 @@
       font-weight: 650;
       cursor: pointer;
       transition: background 0.15s, transform 0.1s;
+    }
+    .capture-ai-hint {
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 8px);
+      z-index: 10;
+      width: 280px;
+      padding: 8px 10px;
+      border-radius: 7px;
+      background: #1e293b;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.5;
+      text-align: left;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translate(-50%, -4px);
+      transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+    }
+    .capture-btn:hover .capture-ai-hint,
+    .capture-btn:focus-visible .capture-ai-hint {
+      opacity: 1;
+      visibility: visible;
+      transform: translate(-50%, 0);
     }
     .capture-btn:hover {
       background: #4053cb;
@@ -321,7 +352,7 @@
       font-weight: 600;
       color: #475569;
     }
-    .form-group input, .form-group select {
+    .form-group input, .form-group select, .form-group textarea {
       padding: 5px 8px;
       font-size: 12px;
       border: 1px solid #cbd5e1;
@@ -329,8 +360,13 @@
       background: #fff;
       color: #1e293b;
       outline: none;
+      font-family: inherit;
     }
-    .form-group input:focus, .form-group select:focus {
+    .form-group textarea {
+      resize: vertical;
+      min-height: 52px;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
       border-color: #5367e9;
       box-shadow: 0 0 0 2px rgba(83, 103, 233, 0.15);
     }
@@ -554,6 +590,7 @@
           <button class="capture-btn" id="aja-scan-btn">
             <span>📌</span>
             <span>一键收录当前岗位</span>
+            <span class="capture-ai-hint">在看板「AI 解析配置」中开启并完成配置后，点击此按钮将调用 AI 提取岗位信息和 JD 内容；未配置时使用本地规则识别。</span>
           </button>
           
           <div class="capture-form hidden" id="aja-capture-form">
@@ -587,6 +624,14 @@
             <div class="form-group">
               <label>投递日期</label>
               <input type="date" id="cap-date">
+            </div>
+            <div class="form-group">
+              <label>职位描述</label>
+              <textarea id="cap-description" rows="3" placeholder="岗位职责与日常工作内容（可由 AI 自动解析）"></textarea>
+            </div>
+            <div class="form-group">
+              <label>职位要求</label>
+              <textarea id="cap-requirements" rows="3" placeholder="任职资格、技能与学历要求（可由 AI 自动解析）"></textarea>
             </div>
             <div class="form-actions">
               <button class="btn-save-record" id="cap-save-btn">✓ 确认存入看板</button>
@@ -627,6 +672,8 @@
   const capCity = shadow.getElementById('cap-city');
   const capStage = shadow.getElementById('cap-stage');
   const capDate = shadow.getElementById('cap-date');
+  const capDescription = shadow.getElementById('cap-description');
+  const capRequirements = shadow.getElementById('cap-requirements');
   const capSaveBtn = shadow.getElementById('cap-save-btn');
   const capCancelBtn = shadow.getElementById('cap-cancel-btn');
   const resumeListEl = shadow.getElementById('aja-resume-list');
@@ -638,7 +685,13 @@
     if (!resume || typeof resume !== 'object') return;
     let html = '';
 
-    for (const [sectionName, sectionData] of Object.entries(resume)) {
+    const orderedSections = [
+      ...RESUME_SECTION_ORDER.filter(sectionName => Object.prototype.hasOwnProperty.call(resume, sectionName)),
+      ...Object.keys(resume).filter(sectionName => !RESUME_SECTION_ORDER.includes(sectionName))
+    ];
+
+    for (const sectionName of orderedSections) {
+      const sectionData = resume[sectionName];
       if (!sectionData) continue;
       const isDefaultOpen = sectionName === '优先信息';
       const collapsedClass = isDefaultOpen ? '' : 'collapsed';
@@ -720,6 +773,11 @@
   }
 
   // ================= 页面收录与 DOM 解析算法 =================
+  function collectJdText() {
+    const main = document.querySelector('main, article, [role="main"]') || document.body;
+    return (main.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 6000);
+  }
+
   function extractPageJobData() {
     function flatten(value, output = []) {
       if (!value) return output;
@@ -762,6 +820,20 @@
     const rawCompany = org || firstText(['[data-testid*="company"]', '[class*="company-name"]', '[class*="companyName"]', '[class*="company_title"]']) || meta('og:site_name');
     const pageText = (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 50000);
 
+    // 章节抽取：按标题关键词摘录正文，直到遇到下一个 JD 章节标题或达到上限
+    function grabSection(keywordRe, maxLen) {
+      const lines = (document.body?.innerText || '').split('\n').map(l => l.trim()).filter(Boolean);
+      const startIdx = lines.findIndex(l => l.length < 40 && keywordRe.test(l));
+      if (startIdx === -1) return '';
+      const out = [];
+      for (let i = startIdx; i < lines.length && out.length < 60; i++) {
+        const cur = lines[i];
+        if (i > startIdx && cur.length < 30 && /^(职位|岗位|任职|职责|招聘|薪资|公司|工作地点|工作地址|联系|投递|福利|我们|团队)[\s：:【\[]/.test(cur)) break;
+        out.push(cur);
+      }
+      return out.join('\n').slice(0, maxLen);
+    }
+
     // 城市推断
     if (!city) {
       const cities = ['北京','上海','广州','深圳','杭州','南京','苏州','成都','重庆','武汉','西安','长沙','天津','厦门','合肥','郑州','青岛','济南','宁波','无锡','珠海','佛山','东莞','福州','昆明','南昌','大连','沈阳','哈尔滨','香港','澳门'];
@@ -795,7 +867,9 @@
       city: city.slice(0, 30),
       stage,
       applicationDate,
-      applicationUrl: location.href
+      applicationUrl: location.href,
+      jobDescription: grabSection(/职位描述|岗位职责|工作内容|职位JD/i, 800),
+      jobRequirements: grabSection(/职位要求|任职要求|任职资格|岗位要求|职位JD/i, 800)
     };
   }
 
@@ -938,14 +1012,62 @@
   });
 
   // 一键提取岗位并展示微调表单
-  scanBtn.addEventListener('click', () => {
-    const detected = extractPageJobData();
-    capCompany.value = detected.company;
-    capPosition.value = detected.position;
-    capCity.value = detected.city;
-    capStage.value = detected.stage;
-    capDate.value = detected.applicationDate;
+  scanBtn.addEventListener('click', async () => {
+    const originalHtml = scanBtn.innerHTML;
+    const localStartedAt = performance.now();
+    const heuristic = extractPageJobData();
+    const clientTimings = {
+      localParseMs: Math.round(performance.now() - localStartedAt)
+    };
+    let detected = heuristic;
+    let llmUsed = false;
+
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage && chrome.storage?.local) {
+        const configStartedAt = performance.now();
+        const res = await chrome.storage.local.get([LLM_STORAGE_KEY]);
+        clientTimings.configReadMs = Math.round(performance.now() - configStartedAt);
+        const cfg = res[LLM_STORAGE_KEY] || {};
+        if (cfg.enabled && cfg.baseUrl && cfg.apiKey && cfg.model) {
+          scanBtn.disabled = true;
+          scanBtn.innerHTML = '<span>🤖</span><span>AI 识别中...</span>';
+          const textStartedAt = performance.now();
+          const pageText = collectJdText();
+          clientTimings.textCollectMs = Math.round(performance.now() - textStartedAt);
+          const llmRes = await new Promise(resolve => {
+            chrome.runtime.sendMessage({
+              type: 'EXTRACT_JOB_LLM',
+              pageText,
+              url: location.href,
+              title: document.title,
+              clientTimings
+            }, resolve);
+          });
+          if (llmRes && llmRes.ok && llmRes.data) {
+            detected = llmRes.data;
+            llmUsed = true;
+          } else if (llmRes && !llmRes.ok) {
+            showToast(`AI 识别失败，已用本地识别: ${llmRes.message || ''}`);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('LLM 提取异常，回退本地识别', err);
+    } finally {
+      scanBtn.disabled = false;
+      scanBtn.innerHTML = originalHtml;
+    }
+
+    capCompany.value = detected.company || heuristic.company || '';
+    capPosition.value = detected.position || heuristic.position || '';
+    capCity.value = detected.city || heuristic.city || '';
+    capStage.value = VALID_STAGES.includes(detected.stage) ? detected.stage : (heuristic.stage || '已投递');
+    if (!VALID_STAGES.includes(capStage.value)) capStage.value = '已投递';
+    capDate.value = detected.applicationDate || heuristic.applicationDate || new Date().toISOString().slice(0, 10);
+    capDescription.value = detected.jobDescription || heuristic.jobDescription || '';
+    capRequirements.value = detected.jobRequirements || heuristic.jobRequirements || '';
     captureForm.classList.remove('hidden');
+    if (llmUsed) showToast('🤖 已用 AI 识别岗位信息，请核对');
   });
 
   capCancelBtn.addEventListener('click', () => {
@@ -961,6 +1083,8 @@
       stage: capStage.value,
       applicationDate: capDate.value || new Date().toISOString().slice(0, 10),
       applicationUrl: location.href,
+      jobDescription: capDescription.value.trim(),
+      jobRequirements: capRequirements.value.trim(),
       recentSchedule: '已完成网申投递',
       nextAction: '关注招聘动态与邮件通知'
     };

@@ -8,10 +8,13 @@
 
   // ================= 常量定义 =================
   const STAGES = ['待投递', '已投递', '笔试', '一面', '二面', 'HR面', 'Offer', '已结束'];
+  const RESUME_SECTION_ORDER = ['优先信息', '基本信息', '教育经历', '实习经历', '项目经历', '竞赛与技能'];
   const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
   const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
   const SAFETY_DB_NAME = 'autumnRecruitmentTracker.safety.v1';
-  const APP_VERSION = '2.1.1';
+  const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
+  const LLM_LOGS_STORAGE_KEY = 'autumnRecruitmentTracker.llmLogs.v1';
+  const APP_VERSION = '2.2.0';
 
   // 默认示例简历种子
   const DEFAULT_RESUME = {
@@ -194,7 +197,8 @@
   const tabs = {
     'records-tab': { kicker: 'JOB TRACKING DASHBOARD', title: '投递追踪看板', subtitle: '全面监控网申进度、面试安排与全链路阶段流转', showActions: true },
     'resume-tab': { kicker: 'RESUME PROFILE MANAGER', title: '我的简历资料库', subtitle: '集中维护个人信息与多段经历，实时同步至网页端快速填报', showActions: false },
-    'safety-tab': { kicker: 'LOCAL DATA & PRIVACY', title: '数据安全与备份', subtitle: '100% 浏览器本地存储保护，支持备份导出与快照回滚', showActions: false }
+    'safety-tab': { kicker: 'LOCAL DATA & PRIVACY', title: '数据安全与备份', subtitle: '100% 浏览器本地存储保护，支持备份导出与快照回滚', showActions: false },
+    'llm-tab': { kicker: 'AI JOB EXTRACTION', title: 'AI 解析配置', subtitle: '配置大模型接口，用 AI 从岗位 JD 中智能提取关键字段', showActions: false }
   };
 
   function switchTab(tabId) {
@@ -229,6 +233,7 @@
     const hash = location.hash;
     if (hash === '#resume') switchTab('resume-tab');
     else if (hash === '#safety') switchTab('safety-tab');
+    else if (hash === '#llm') switchTab('llm-tab');
     else switchTab('records-tab');
   }
   window.addEventListener('hashchange', handleUrlHash);
@@ -443,6 +448,8 @@
     $('#m-scheduleAt').value = '';
     $('#m-recentSchedule').value = '';
     $('#m-nextAction').value = '';
+    $('#m-jobDescription').value = '';
+    $('#m-jobRequirements').value = '';
     recordModal.showModal();
   });
 
@@ -461,6 +468,8 @@
     $('#m-scheduleAt').value = record.scheduleAt || '';
     $('#m-recentSchedule').value = record.recentSchedule || '';
     $('#m-nextAction').value = record.nextAction || '';
+    $('#m-jobDescription').value = record.jobDescription || '';
+    $('#m-jobRequirements').value = record.jobRequirements || '';
     recordModal.showModal();
   }
 
@@ -479,6 +488,8 @@
       scheduleAt: $('#m-scheduleAt').value,
       recentSchedule: $('#m-recentSchedule').value.trim(),
       nextAction: $('#m-nextAction').value.trim(),
+      jobDescription: $('#m-jobDescription').value.trim(),
+      jobRequirements: $('#m-jobRequirements').value.trim(),
       updatedAt: Date.now()
     };
 
@@ -716,7 +727,15 @@
       });
     });
 
-    currentResume = updated;
+    const ordered = {};
+    [
+      ...RESUME_SECTION_ORDER,
+      ...Object.keys(updated).filter(sectionName => !RESUME_SECTION_ORDER.includes(sectionName))
+    ].forEach(sectionName => {
+      if (Object.prototype.hasOwnProperty.call(updated, sectionName)) ordered[sectionName] = updated[sectionName];
+    });
+
+    currentResume = ordered;
     await storageSet(RESUME_STORAGE_KEY, currentResume);
     saveSnapshot(records, currentResume);
     showToast('🎉 简历资料库已保存！所有网页侧边栏已实时同步');
@@ -1159,12 +1178,174 @@
     saveRecords(`🎉 已收录: ${newRec.company} - ${newRec.position}`);
     ocrModal.close();
   });
+  // ================= LLM 一键收录配置 =================
+  const llmEnabledToggle = $('#llmEnabledToggle');
+  const llmDisableThinkingToggle = $('#llmDisableThinkingToggle');
+  const llmBaseUrl = $('#llmBaseUrl');
+  const llmApiKey = $('#llmApiKey');
+  const llmModel = $('#llmModel');
+  const llmTestHint = $('#llmTestHint');
+
+  async function loadLlmConfig() {
+    const cfg = (await storageGet(LLM_STORAGE_KEY)) || {};
+    llmEnabledToggle.checked = cfg.enabled === true;
+    llmDisableThinkingToggle.checked = cfg.disableThinking !== false;
+    llmBaseUrl.value = cfg.baseUrl || '';
+    llmApiKey.value = cfg.apiKey || '';
+    llmModel.value = cfg.model || '';
+  }
+
+  async function saveLlmConfig() {
+    await storageSet(LLM_STORAGE_KEY, {
+      enabled: llmEnabledToggle.checked,
+      disableThinking: llmDisableThinkingToggle.checked,
+      baseUrl: llmBaseUrl.value.trim(),
+      apiKey: llmApiKey.value.trim(),
+      model: llmModel.value.trim()
+    });
+    llmTestHint.textContent = '✅ 配置已保存。招聘页面点击「一键收录当前岗位」时将使用 AI 解析。';
+    showToast('✅ AI 解析配置已保存');
+  }
+
+  function setLlmTestHint(text, isError = false) {
+    llmTestHint.textContent = text;
+    llmTestHint.style.color = isError ? '#ef4444' : '#166534';
+  }
+
+  $('#llmSaveBtn').addEventListener('click', saveLlmConfig);
+
+  $('#llmTestBtn').addEventListener('click', async () => {
+    await saveLlmConfig();
+    setLlmTestHint('⏳ 正在测试连接...');
+    const btn = $('#llmTestBtn');
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '测试中...';
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        const res = await new Promise(resolve => chrome.runtime.sendMessage({ type: 'TEST_LLM' }, resolve));
+        if (res && res.ok) setLlmTestHint('✅ 连接成功，模型可用。');
+        else setLlmTestHint(`❌ 测试失败: ${res?.message || '未知错误'}`, true);
+      } else {
+        setLlmTestHint('⚠️ 需在扩展环境下测试', true);
+      }
+    } catch (err) {
+      setLlmTestHint(`❌ 测试异常: ${err.message || err}`, true);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = orig;
+    }
+  });
+
+  llmEnabledToggle.addEventListener('change', () => {
+    if (!llmEnabledToggle.checked) {
+      setLlmTestHint('AI 解析已关闭，一键收录将使用本地规则识别。');
+    } else {
+      setLlmTestHint('提示：JD 文本将发送到你所填写的服务商用于解析，请确认配置正确。');
+    }
+  });
+
+  const llmLogSummary = $('#llmLogSummary');
+  const llmLogList = $('#llmLogList');
+  const llmLogStatusLabels = {
+    success: '成功',
+    parse_error: 'JSON 解析失败',
+    request_error: '请求失败',
+    skipped: '未调用'
+  };
+
+  function createLogText(className, text) {
+    const el = document.createElement('span');
+    el.className = className;
+    el.textContent = text;
+    return el;
+  }
+
+  function renderLlmLogs(logs) {
+    const list = Array.isArray(logs) ? logs : [];
+    llmLogList.replaceChildren();
+    const successful = list.filter(log => log.ok).length;
+    llmLogSummary.textContent = list.length
+      ? `共 ${list.length} 条，成功 ${successful} 条，失败/跳过 ${list.length - successful} 条`
+      : '暂无调用日志';
+
+    if (!list.length) {
+      llmLogList.appendChild(createLogText('llm-log-empty', '点击「一键收录」或「测试连接」后，调用记录会显示在这里。'));
+      return;
+    }
+
+    list.forEach(log => {
+      const entry = document.createElement('article');
+      entry.className = `llm-log-entry ${log.status === 'skipped' ? 'is-skipped' : log.ok ? '' : 'is-error'}`;
+
+      const main = document.createElement('div');
+      main.className = 'llm-log-main';
+      main.append(
+        createLogText('', log.kind === 'test' ? '连接测试' : '岗位解析'),
+        createLogText('llm-log-status', llmLogStatusLabels[log.status] || log.status || '未知状态'),
+        createLogText('', log.at ? new Date(log.at).toLocaleString() : '无时间')
+      );
+
+      const meta = document.createElement('div');
+      meta.className = 'llm-log-meta';
+      meta.append(
+        createLogText('', `模型：${log.model || '-'}`),
+        createLogText('', `接口：${log.endpoint || '-'}`),
+        createLogText('', `思考：${log.thinkingDisabled === undefined ? '-' : log.thinkingDisabled ? '已关闭' : '开启'}`),
+        createLogText('', `总耗时：${log.totalMs ?? '-'} ms`),
+        createLogText('', `API：${log.apiMs ?? '-'} ms`),
+        createLogText('', `解析：${log.parseMs ?? '-'} ms`),
+        createLogText('', `输入：${log.inputChars ?? '-'} 字符`),
+        createLogText('', `输出：${log.outputChars ?? '-'} 字符`),
+        createLogText('', `请求：${Array.isArray(log.attempts) ? log.attempts.length : 0} 次`)
+      );
+
+      entry.append(main, meta);
+      if (log.clientTimings && Object.keys(log.clientTimings).length) {
+        const client = document.createElement('div');
+        client.className = 'llm-log-meta';
+        client.textContent = `页面本地耗时：解析 ${log.clientTimings.localParseMs ?? '-'} ms · 读取配置 ${log.clientTimings.configReadMs ?? '-'} ms · 采集文本 ${log.clientTimings.textCollectMs ?? '-'} ms`;
+        entry.appendChild(client);
+      }
+      (log.attempts || []).forEach(attempt => {
+        const attemptEl = document.createElement('div');
+        attemptEl.className = 'llm-log-attempt';
+        attemptEl.textContent = `第 ${attempt.attempt} 次${attempt.jsonMode ? '（JSON mode）' : ''}：${attempt.ok ? '成功' : (attempt.error || '失败')} · ${attempt.durationMs ?? '-'} ms · HTTP ${attempt.status ?? '-'}`;
+        entry.appendChild(attemptEl);
+      });
+      if (log.error) {
+        entry.appendChild(createLogText('llm-log-error', `错误：${log.error}`));
+      }
+      llmLogList.appendChild(entry);
+    });
+  }
+
+  async function loadLlmLogs() {
+    renderLlmLogs((await storageGet(LLM_LOGS_STORAGE_KEY)) || []);
+  }
+
+  $('#refreshLlmLogsBtn').addEventListener('click', loadLlmLogs);
+  $('#clearLlmLogsBtn').addEventListener('click', async () => {
+    if (!window.confirm('确定清空全部 LLM 调用日志吗？')) return;
+    await storageSet(LLM_LOGS_STORAGE_KEY, []);
+    renderLlmLogs([]);
+  });
+
+  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes[LLM_LOGS_STORAGE_KEY]) {
+        renderLlmLogs(changes[LLM_LOGS_STORAGE_KEY].newValue || []);
+      }
+    });
+  }
 
   // ================= 初始化启动 =================
   async function init() {
     handleUrlHash();
     await loadRecords();
     await loadResume();
+    await loadLlmConfig();
+    await loadLlmLogs();
     updateSnapshotCount();
   }
 

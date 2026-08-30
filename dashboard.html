@@ -15,7 +15,7 @@
         <div class="brand-mark">🚀</div>
         <div>
           <div class="sidebar-title">秋招中枢看板</div>
-          <div class="sidebar-subtitle">求职提效一体化系统 v2.1.1</div>
+          <div class="sidebar-subtitle">求职提效一体化系统 v2.2.0</div>
         </div>
       </div>
 
@@ -31,6 +31,10 @@
         <button class="nav-item" id="nav-safety" data-tab="safety-tab">
           <span class="nav-icon">⚙️</span>
           <span>数据安全与备份</span>
+        </button>
+        <button class="nav-item" id="nav-llm" data-tab="llm-tab">
+          <span class="nav-icon">🤖</span>
+          <span>AI 解析配置</span>
         </button>
       </nav>
 
@@ -270,6 +274,72 @@
           </div>
         </div>
       </section>
+
+      <!-- ================= TAB 4: AI 解析配置 ================= -->
+      <section class="tab-content" id="llm-tab">
+        <div class="safety-wrapper">
+          <div class="safety-box">
+            <h2>🤖 AI 岗位一键收录解析</h2>
+            <p class="safety-desc">开启后，在招聘页面点击「一键收录当前岗位」时将调用你配置的大模型，把岗位 JD 正文解析为公司 / 岗位 / 城市 / 阶段 / 投递日期并填入微调表单。未开启或调用失败时自动回退到本地规则识别。</p>
+
+            <div class="llm-config-grid">
+              <div class="safety-metric-card">
+                <div class="metric-title">启用 AI 解析</div>
+                <label class="switch">
+                  <input type="checkbox" id="llmEnabledToggle">
+                  <span class="slider"></span>
+                </label>
+                <p class="metric-desc">把岗位页面正文发送到你配置的模型服务商</p>
+              </div>
+              <div class="safety-metric-card">
+                <div class="metric-title">关闭思考模式</div>
+                <label class="switch">
+                  <input type="checkbox" id="llmDisableThinkingToggle" checked>
+                  <span class="slider"></span>
+                </label>
+                <p class="metric-desc">适用于 Qwen3 等模型，可减少解析等待时间</p>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-item full-width">
+                <label>API 基础地址 (Base URL，OpenAI 兼容)</label>
+                <input type="url" id="llmBaseUrl" placeholder="https://api.deepseek.com/v1">
+              </div>
+              <div class="form-item full-width">
+                <label>API Key</label>
+                <input type="password" id="llmApiKey" placeholder="sk-...">
+              </div>
+              <div class="form-item">
+                <label>模型名</label>
+                <input type="text" id="llmModel" placeholder="deepseek-chat">
+              </div>
+            </div>
+
+            <p class="verify-hint" id="llmTestHint">提示：JD 文本将发送到你所填写的服务商用于解析，请勿在此配置含个人隐私的账号。</p>
+
+            <div class="safety-btn-group">
+              <button class="btn" id="llmTestBtn">🔌 测试连接</button>
+              <button class="btn btn-primary" id="llmSaveBtn">💾 保存配置</button>
+            </div>
+          </div>
+
+          <div class="safety-box llm-log-box">
+            <div class="llm-log-header">
+              <div>
+                <h2>📋 LLM 调用日志</h2>
+                <p class="safety-desc">用于定位解析耗时、重复请求和接口错误。日志只保存诊断信息，不保存 API Key 或 JD 原文。</p>
+              </div>
+              <div class="llm-log-actions">
+                <button class="btn" id="refreshLlmLogsBtn">↻ 刷新</button>
+                <button class="btn btn-danger" id="clearLlmLogsBtn">清空日志</button>
+              </div>
+            </div>
+            <div class="llm-log-summary" id="llmLogSummary">暂无调用日志</div>
+            <div class="llm-log-list" id="llmLogList"></div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -326,6 +396,14 @@
         <div class="form-item full-width">
           <label>下一步行动与复盘备忘</label>
           <textarea id="m-nextAction" rows="3" placeholder="例如：准备产品案例讲解，深挖多智能体框架设计细节..."></textarea>
+        </div>
+        <div class="form-item full-width">
+          <label>职位描述 (JD)</label>
+          <textarea id="m-jobDescription" rows="4" placeholder="岗位职责、工作内容..."></textarea>
+        </div>
+        <div class="form-item full-width">
+          <label>职位要求 (JD)</label>
+          <textarea id="m-jobRequirements" rows="4" placeholder="任职资格、学历与技能要求..."></textarea>
         </div>
       </div>
       <div class="modal-footer">

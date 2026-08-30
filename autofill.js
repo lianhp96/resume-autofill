@@ -20,8 +20,8 @@
 
   const FIELD_ALIASES = {
     'personal.fullName': ['姓名', '中文姓名', '真实姓名', 'full name', 'legal name'],
-    'personal.firstName': ['名字', 'first name', 'given name'],
-    'personal.lastName': ['姓氏', 'last name', 'family name', 'surname'],
+    'personal.firstName': ['名', '名字', 'first name', 'given name'],
+    'personal.lastName': ['姓', '姓氏', 'last name', 'family name', 'surname'],
     'personal.phone': ['手机', '手机号', '联系电话', '联系电话号码', '电话', 'mobile', 'phone', 'tel'],
     'personal.email': ['邮箱', '电子邮箱', '电子邮件', 'email', 'e-mail', 'mail address'],
     'personal.city': ['现居地', '所在城市', '居住城市', '当前城市', 'current city', 'city of residence'],
@@ -109,10 +109,6 @@
     return [associatedLabel(el), ariaText(el), el.placeholder, el.name, el.id, el.autocomplete, nearbyText(el)].filter(Boolean).join(' ');
   }
 
-  function directFieldText(el) {
-    return [associatedLabel(el), ariaText(el), el.placeholder, el.name, el.id, el.autocomplete].filter(Boolean).join(' ');
-  }
-
   function controlKind(el) {
     if (el instanceof HTMLTextAreaElement) return 'textarea';
     if (el instanceof HTMLSelectElement) return 'select';
@@ -141,8 +137,6 @@
       const kind = controlKind(el);
       return {
         el, index, kind, text, normalizedText: normalizeText(text),
-        normalizedDirectText: normalizeText(directFieldText(el)),
-        optionText: normalizeText(`${associatedLabel(el)} ${el.value || ''}`),
         label: stringValue(associatedLabel(el) || el.getAttribute('aria-label') || el.placeholder || el.name || el.id),
         options: el instanceof HTMLSelectElement ? Array.from(el.options).map(option => ({ value: option.value, text: option.textContent.trim() })) : [],
         required: el.required || el.getAttribute('aria-required') === 'true',
@@ -160,9 +154,7 @@
 
   function matchField(field, profile) {
     if (field.skipReason) return { status: 'skipped', reason: field.skipReason };
-    // 仅直接绑定到控件的标签、ARIA 和属性可触发高置信度自动填写。
-    // 父容器文本只用于识别敏感问题及用户明确保存的问答上下文。
-    const text = field.normalizedDirectText;
+    const text = field.normalizedText;
     const candidates = Object.entries(FIELD_ALIASES).map(([key, aliases]) => {
       const matchingAlias = aliases.map(normalizeText).find(alias => alias && (text === alias || text.includes(alias)));
       return matchingAlias ? { key, alias: matchingAlias, value: resolveProfileValue(profile, key) } : null;
@@ -174,7 +166,7 @@
     }
     const answerKey = Object.keys(profile.answers || {}).find(key => {
       const normalizedKey = normalizeText(key);
-      return normalizedKey && (field.normalizedText === normalizedKey || field.normalizedText.includes(normalizedKey));
+      return normalizedKey && (text === normalizedKey || text.includes(normalizedKey));
     });
     if (answerKey && !SENSITIVE_RE.test(field.text)) {
       return { status: 'matched', key: `answers.${answerKey}`, value: profile.answers[answerKey], confidence: 'high', reason: '匹配到用户保存的常用问答' };
@@ -221,9 +213,9 @@
       return el.checked === match.value ? { status: 'filled', reason: match.reason } : { status: 'failed', reason: '写入后核验失败' };
     }
     if (kind === 'radio') {
-      if (typeof match.value !== 'string') return { status: 'pending', reason: '单选项仅接受明确的文本常用问答' };
       const target = normalizeText(match.value);
-      if (!target || !field.optionText.includes(target)) return { status: 'skipped', reason: '同组中未选中的单选项' };
+      const optionText = normalizeText(`${field.text} ${el.value}`);
+      if (!target || !optionText.includes(target)) return { status: 'pending', reason: '单选项与明确答案不一致' };
       el.checked = true;
       dispatchFieldEvents(el);
       return el.checked ? { status: 'filled', reason: match.reason } : { status: 'failed', reason: '写入后核验失败' };
@@ -267,13 +259,11 @@
       }
       if (field.kind === 'radio' || field.kind === 'checkbox') {
         const result = writeField(field, match);
-        if (result.status === 'filled') markField(field.el, 'filled');
-        else if (result.status !== 'skipped') markField(field.el, 'attention');
+        if (result.status === 'filled') markField(field.el, 'filled'); else markField(field.el, 'attention');
         return { ...base, ...result, key: match.key };
       }
       const result = writeField(field, match);
-      if (result.status === 'filled') markField(field.el, 'filled');
-      else if (result.status !== 'skipped') markField(field.el, 'attention');
+      if (result.status === 'filled') markField(field.el, 'filled'); else markField(field.el, 'attention');
       return { ...base, ...result, key: match.key };
     });
     const report = { version: 1, url: location.href, title: document.title, createdAt: Date.now(), summary: summarize(items), items };

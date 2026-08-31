@@ -89,7 +89,8 @@ async function openOrFocusDashboard(targetHash = '') {
   const existingTab = tabs.find(tab => tab.url && tab.url.startsWith(dashboardUrl));
   
   if (existingTab && existingTab.id) {
-    if (targetHash && existingTab.url !== fullTargetUrl) {
+    // 未指定锚点时回到默认的投递追踪看板，避免沿用此前停留的资料库页面。
+    if (existingTab.url !== fullTargetUrl) {
       await chrome.tabs.update(existingTab.id, { url: fullTargetUrl, active: true });
     } else {
       await chrome.tabs.update(existingTab.id, { active: true });

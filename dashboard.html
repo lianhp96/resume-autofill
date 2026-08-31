@@ -15,7 +15,7 @@
         <div class="brand-mark">🚀</div>
         <div>
           <div class="sidebar-title">秋招中枢看板</div>
-          <div class="sidebar-subtitle">求职提效一体化系统 v2.2.1</div>
+          <div class="sidebar-subtitle">求职提效一体化系统 v2.2.2</div>
         </div>
       </div>
 
@@ -56,7 +56,9 @@
           </div>
         </div>
         <div class="top-actions" id="topActionsContainer">
+          <button class="btn" id="refreshDashboardBtn"><span class="icon">↻</span>刷新看板</button>
           <button class="btn" id="openOcrModalBtn"><span class="icon">🖼️</span>截图识别</button>
+          <button class="btn" id="openExcelExportModalBtn"><span class="icon">📊</span>导出 Excel</button>
           <button class="btn" id="exportDataBtn"><span class="icon">📤</span>导出备份</button>
           <button class="btn btn-primary" id="addRecordBtn"><span class="icon">+</span>新增投递</button>
         </div>
@@ -415,6 +417,47 @@
         <button type="submit" class="btn btn-primary">保存记录</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="excelExportModal" class="modal-dialog">
+    <div class="modal-header">
+      <h2>📊 导出投递信息</h2>
+      <button class="modal-close-btn" id="closeExcelExportModalBtn">✕</button>
+    </div>
+    <form id="excelExportForm" class="modal-body">
+      <p class="export-filter-note">按投递日期（含起止日）和投递阶段筛选后，导出为 Excel 文件。数据只在本地浏览器中处理。</p>
+      <div class="form-grid">
+        <div class="form-item">
+          <label>投递开始日期</label>
+          <input type="date" id="excelExportStartDate">
+        </div>
+        <div class="form-item">
+          <label>投递结束日期</label>
+          <input type="date" id="excelExportEndDate">
+        </div>
+        <div class="form-item full-width">
+          <label>投递阶段</label>
+          <select id="excelExportStage">
+            <option value="">全部阶段</option>
+            <option value="待投递">待投递</option>
+            <option value="已投递">已投递</option>
+            <option value="已测评">已测评</option>
+            <option value="笔试">笔试</option>
+            <option value="一面">一面</option>
+            <option value="二面">二面</option>
+            <option value="HR面">HR面</option>
+            <option value="Offer">Offer</option>
+            <option value="简历挂">简历挂</option>
+            <option value="已结束">已结束</option>
+          </select>
+        </div>
+      </div>
+      <p class="export-filter-count" id="excelExportCount">将导出全部 0 条投递记录</p>
+    </form>
+    <div class="modal-footer">
+      <button type="button" class="btn" id="cancelExcelExportBtn">取消</button>
+      <button type="submit" form="excelExportForm" class="btn btn-primary">下载 Excel</button>
+    </div>
   </dialog>
 
   <!-- ================= 模态弹窗: OCR 截图识别 ================= -->

@@ -755,6 +755,17 @@ h1 {
 .modal-body {
   padding: 22px;
 }
+.export-filter-note {
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.export-filter-count {
+  margin-top: 14px;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

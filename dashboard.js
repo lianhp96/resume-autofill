@@ -15,7 +15,7 @@
   const SAFETY_DB_NAME = 'autumnRecruitmentTracker.safety.v1';
   const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
   const LLM_LOGS_STORAGE_KEY = 'autumnRecruitmentTracker.llmLogs.v1';
-  const APP_VERSION = '2.2.1';
+  const APP_VERSION = '2.2.2';
 
   // 默认示例简历种子
   const DEFAULT_RESUME = {
@@ -399,6 +399,11 @@
   $('#searchInput').addEventListener('input', renderRecords);
   $('#stageFilter').addEventListener('change', renderRecords);
   $('#sortSelect').addEventListener('change', renderRecords);
+  $('#refreshDashboardBtn').addEventListener('click', async () => {
+    await loadRecords();
+    await updateSnapshotCount();
+    showToast('投递追踪看板已刷新');
+  });
 
   // 表格操作委托
   $('#recordsTbody').addEventListener('click', (e) => {
@@ -811,6 +816,178 @@
 
   $('#exportDataBtn').addEventListener('click', downloadFullBackup);
   $('#exportFullBackupBtn').addEventListener('click', downloadFullBackup);
+
+  // ================= 投递记录 Excel 导出 =================
+  const excelExportModal = $('#excelExportModal');
+  const excelExportStartDate = $('#excelExportStartDate');
+  const excelExportEndDate = $('#excelExportEndDate');
+  const excelExportStage = $('#excelExportStage');
+  const excelExportCount = $('#excelExportCount');
+
+  function recordsForExcelExport() {
+    const startDate = excelExportStartDate.value;
+    const endDate = excelExportEndDate.value;
+    const stage = excelExportStage.value;
+    return records.filter(record => {
+      const date = record.applicationDate || '';
+      return (!startDate || (date && date >= startDate))
+        && (!endDate || (date && date <= endDate))
+        && (!stage || record.stage === stage);
+    }).sort((a, b) => (b.applicationDate || '').localeCompare(a.applicationDate || ''));
+  }
+
+  function refreshExcelExportCount() {
+    excelExportCount.textContent = `将导出 ${recordsForExcelExport().length} 条投递记录`;
+  }
+
+  function setExcelExportFullDateRange() {
+    const dates = records.map(record => record.applicationDate || '')
+      .filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date))
+      .sort();
+    excelExportStartDate.value = dates[0] || '';
+    excelExportEndDate.value = dates[dates.length - 1] || '';
+  }
+
+  function escapeXml(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  }
+
+  function excelColumnName(index) {
+    let name = '';
+    for (let value = index + 1; value > 0; value = Math.floor((value - 1) / 26)) {
+      name = String.fromCharCode(65 + ((value - 1) % 26)) + name;
+    }
+    return name;
+  }
+
+  function crc32(bytes) {
+    let crc = -1;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+    }
+    return (crc ^ -1) >>> 0;
+  }
+
+  function zipStoredFiles(files) {
+    const encoder = new TextEncoder();
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+    const set16 = (view, position, value) => view.setUint16(position, value, true);
+    const set32 = (view, position, value) => view.setUint32(position, value, true);
+
+    files.forEach(({ name, content }) => {
+      const nameBytes = encoder.encode(name);
+      const data = encoder.encode(content);
+      const crc = crc32(data);
+      const local = new Uint8Array(30 + nameBytes.length + data.length);
+      const localView = new DataView(local.buffer);
+      set32(localView, 0, 0x04034b50);
+      set16(localView, 4, 20);
+      set16(localView, 6, 0x0800);
+      set16(localView, 8, 0);
+      set32(localView, 14, crc);
+      set32(localView, 18, data.length);
+      set32(localView, 22, data.length);
+      set16(localView, 26, nameBytes.length);
+      local.set(nameBytes, 30);
+      local.set(data, 30 + nameBytes.length);
+      localParts.push(local);
+
+      const central = new Uint8Array(46 + nameBytes.length);
+      const centralView = new DataView(central.buffer);
+      set32(centralView, 0, 0x02014b50);
+      set16(centralView, 4, 20);
+      set16(centralView, 6, 20);
+      set16(centralView, 8, 0x0800);
+      set16(centralView, 10, 0);
+      set32(centralView, 16, crc);
+      set32(centralView, 20, data.length);
+      set32(centralView, 24, data.length);
+      set16(centralView, 28, nameBytes.length);
+      set32(centralView, 42, offset);
+      central.set(nameBytes, 46);
+      centralParts.push(central);
+      offset += local.length;
+    });
+
+    const centralSize = centralParts.reduce((size, part) => size + part.length, 0);
+    const end = new Uint8Array(22);
+    const endView = new DataView(end.buffer);
+    set32(endView, 0, 0x06054b50);
+    set16(endView, 8, files.length);
+    set16(endView, 10, files.length);
+    set32(endView, 12, centralSize);
+    set32(endView, 16, offset);
+    return new Blob([...localParts, ...centralParts, end], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+
+  function createRecordsXlsx(exportRecords) {
+    const headers = ['公司', '投递岗位', '城市', '投递日期', '当前阶段', '最近日程', '日程时间', '下一步行动', '网申链接', '职位描述', '职位要求', '最近更新'];
+    const rows = exportRecords.map(record => [
+      record.company, record.position, record.city, record.applicationDate, record.stage,
+      record.recentSchedule, record.scheduleAt ? record.scheduleAt.replace('T', ' ') : '', record.nextAction,
+      record.applicationUrl || record.url, record.jobDescription, record.jobRequirements,
+      record.updatedAt ? new Date(record.updatedAt).toLocaleString('zh-CN', { hour12: false }) : ''
+    ]);
+    const sheetRows = [headers, ...rows].map((row, rowIndex) => {
+      const cells = row.map((value, columnIndex) => `<c r="${excelColumnName(columnIndex)}${rowIndex + 1}" t="inlineStr"${rowIndex === 0 ? ' s="1"' : ''}><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`).join('');
+      return `<row r="${rowIndex + 1}">${cells}</row>`;
+    }).join('');
+    const widths = [22, 28, 14, 14, 12, 24, 20, 34, 42, 54, 54, 22]
+      .map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`).join('');
+    const generatedAt = new Date().toISOString();
+    return zipStoredFiles([
+      { name: '[Content_Types].xml', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>' },
+      { name: '_rels/.rels', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>' },
+      { name: 'xl/workbook.xml', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="投递记录" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+      { name: 'xl/_rels/workbook.xml.rels', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+      { name: 'xl/styles.xml', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="Microsoft YaHei"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Microsoft YaHei"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF4F64EE"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs></styleSheet>' },
+      { name: 'xl/worksheets/sheet1.xml', content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${widths}</cols><sheetData>${sheetRows}</sheetData><autoFilter ref="A1:L${Math.max(rows.length + 1, 1)}"/></worksheet>` },
+      { name: 'docProps/core.xml', content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>秋招求职与简历助手</dc:creator><dc:title>投递记录导出</dc:title><dcterms:created xsi:type="dcterms:W3CDTF">${generatedAt}</dcterms:created></cp:coreProperties>` },
+      { name: 'docProps/app.xml', content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>秋招求职与简历助手</Application></Properties>' }
+    ]);
+  }
+
+  function exportRecordsToExcel() {
+    const startDate = excelExportStartDate.value;
+    const endDate = excelExportEndDate.value;
+    if (startDate && endDate && startDate > endDate) {
+      showToast('开始日期不能晚于结束日期');
+      return;
+    }
+    const exportRecords = recordsForExcelExport();
+    if (exportRecords.length === 0) {
+      showToast('当前筛选条件下没有可导出的投递记录');
+      return;
+    }
+    const blob = createRecordsXlsx(exportRecords);
+    const range = `${startDate || '全部'}至${endDate || '全部'}`;
+    const stage = excelExportStage.value || '全部阶段';
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `投递记录_${range}_${stage}.xlsx`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    excelExportModal.close();
+    showToast(`已导出 ${exportRecords.length} 条投递记录`);
+  }
+
+  $('#openExcelExportModalBtn').addEventListener('click', () => {
+    excelExportStage.value = $('#stageFilter').value;
+    setExcelExportFullDateRange();
+    refreshExcelExportCount();
+    excelExportModal.showModal();
+  });
+  $('#closeExcelExportModalBtn').addEventListener('click', () => excelExportModal.close());
+  $('#cancelExcelExportBtn').addEventListener('click', () => excelExportModal.close());
+  [excelExportStartDate, excelExportEndDate, excelExportStage].forEach(control => control.addEventListener('change', refreshExcelExportCount));
+  $('#excelExportForm').addEventListener('submit', event => {
+    event.preventDefault();
+    exportRecordsToExcel();
+  });
 
   $('#importFullBackupBtn').addEventListener('click', () => $('#fullBackupFileInput').click());
   $('#fullBackupFileInput').addEventListener('change', (e) => {

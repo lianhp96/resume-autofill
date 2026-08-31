@@ -13,7 +13,7 @@
   const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
   const SETTINGS_STORAGE_KEY = 'autumnRecruitmentTracker.settings.v1';
   const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
-  const VALID_STAGES = ['待投递', '已投递', '笔试', '一面', '二面', 'HR面', 'Offer', '已结束'];
+  const VALID_STAGES = ['待投递', '已投递', '已测评', '笔试', '一面', '二面', 'HR面', 'Offer', '简历挂', '已结束'];
   const RESUME_SECTION_ORDER = ['优先信息', '基本信息', '教育经历', '实习经历', '项目经历', '竞赛与技能'];
 
   // ================= 默认简历备用种子数据 =================
@@ -612,11 +612,13 @@
                 <select id="cap-stage">
                   <option value="已投递">已投递</option>
                   <option value="待投递">待投递</option>
+                  <option value="已测评">已测评</option>
                   <option value="笔试">笔试</option>
                   <option value="一面">一面</option>
                   <option value="二面">二面</option>
                   <option value="HR面">HR面</option>
                   <option value="Offer">Offer</option>
+                  <option value="简历挂">简历挂</option>
                   <option value="已结束">已结束</option>
                 </select>
               </div>
@@ -843,11 +845,13 @@
     // 状态推断
     let stage = '已投递';
     if (/offer|录用|待入职/i.test(pageText)) stage = 'Offer';
+    else if (/简历挂|简历未通过|简历筛选未通过|简历淘汰/.test(pageText)) stage = '简历挂';
     else if (/不合适|未通过|已拒绝|流程结束|招聘结束|已关闭/.test(pageText)) stage = '已结束';
     else if (/HR面|hr面|人事面/i.test(pageText)) stage = 'HR面';
     else if (/二面|第二轮|复试/.test(pageText)) stage = '二面';
     else if (/一面|初面|第一轮/.test(pageText)) stage = '一面';
-    else if (/笔试|测评/.test(pageText)) stage = '笔试';
+    else if (/测评|在线测试/.test(pageText)) stage = '已测评';
+    else if (/笔试/.test(pageText)) stage = '笔试';
 
     // 日期推断
     const dateMatch = pageText.match(/(?:投递|申请)(?:时间|日期)?\s*[:：]?\s*(20\d{2})[.\/年-](\d{1,2})[.\/月-](\d{1,2})日?/);

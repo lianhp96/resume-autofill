@@ -447,11 +447,13 @@ h1 {
 }
 .stage-tag.stage-待投递 { background: #f1f5f9; color: #475569; }
 .stage-tag.stage-已投递 { background: #eff6ff; color: #2563eb; }
+.stage-tag.stage-已测评 { background: #fef3c7; color: #b45309; }
 .stage-tag.stage-笔试 { background: #fef3c7; color: #d97706; }
 .stage-tag.stage-一面 { background: #ede9fe; color: #7c3aed; }
 .stage-tag.stage-二面 { background: #fae8ff; color: #c026d3; }
 .stage-tag.stage-HR面 { background: #fce7f3; color: #db2777; }
 .stage-tag.stage-Offer { background: #dcfce7; color: #15803d; }
+.stage-tag.stage-简历挂 { background: #fff1f2; color: #be123c; }
 .stage-tag.stage-已结束 { background: #fee2e2; color: #b91c1c; }
 
 .table-actions {

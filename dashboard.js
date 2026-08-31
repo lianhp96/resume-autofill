@@ -7,14 +7,15 @@
   'use strict';
 
   // ================= 常量定义 =================
-  const STAGES = ['待投递', '已投递', '笔试', '一面', '二面', 'HR面', 'Offer', '已结束'];
+  const STAGES = ['待投递', '已投递', '已测评', '笔试', '一面', '二面', 'HR面', 'Offer', '简历挂', '已结束'];
+  const STAGE_ADVANCE_ORDER = ['待投递', '已投递', '已测评', '笔试', '一面', '二面', 'HR面', 'Offer', '已结束'];
   const RESUME_SECTION_ORDER = ['优先信息', '基本信息', '教育经历', '实习经历', '项目经历', '竞赛与技能'];
   const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
   const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
   const SAFETY_DB_NAME = 'autumnRecruitmentTracker.safety.v1';
   const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
   const LLM_LOGS_STORAGE_KEY = 'autumnRecruitmentTracker.llmLogs.v1';
-  const APP_VERSION = '2.2.0';
+  const APP_VERSION = '2.2.1';
 
   // 默认示例简历种子
   const DEFAULT_RESUME = {
@@ -287,7 +288,7 @@
     $('#totalCount').textContent = records.length;
     const todayStr = new Date().toISOString().slice(0, 10);
     $('#todayCount').textContent = records.filter(r => (r.applicationDate === todayStr || (r.updatedAt && new Date(r.updatedAt).toISOString().slice(0,10) === todayStr))).length;
-    $('#activeCount').textContent = records.filter(r => !['Offer', '已结束', '待投递'].includes(r.stage)).length;
+    $('#activeCount').textContent = records.filter(r => !['Offer', '简历挂', '已结束', '待投递'].includes(r.stage)).length;
     $('#weekCount').textContent = records.filter(r => r.scheduleAt && new Date(r.scheduleAt) >= new Date()).length;
     $('#offerCount').textContent = records.filter(r => r.stage === 'Offer').length;
 
@@ -416,9 +417,9 @@
   function advanceStage(id) {
     const record = records.find(r => r.id === id);
     if (!record) return;
-    const curIdx = STAGES.indexOf(record.stage);
-    if (curIdx >= 0 && curIdx < STAGES.length - 1) {
-      record.stage = STAGES[curIdx + 1];
+    const curIdx = STAGE_ADVANCE_ORDER.indexOf(record.stage);
+    if (curIdx >= 0 && curIdx < STAGE_ADVANCE_ORDER.length - 1) {
+      record.stage = STAGE_ADVANCE_ORDER[curIdx + 1];
       record.updatedAt = Date.now();
       saveRecords(`🚀 ${record.company} 阶段已推进至「${record.stage}」`);
     }
@@ -1138,11 +1139,13 @@
 
     let stage = '已投递';
     if (/(?:offer|录用|已通过|已录取)/i.test(text)) stage = 'Offer';
+    else if (/(?:简历挂|简历未通过|简历筛选未通过|简历淘汰)/i.test(text)) stage = '简历挂';
     else if (/(?:已结束|流程结束|不合适|未通过|淘汰|拒绝)/i.test(text)) stage = '已结束';
     else if (/(?:HR\s*面|人力面|人事面)/i.test(text)) stage = 'HR面';
     else if (/(?:二面|第二轮面试|复试)/i.test(text)) stage = '二面';
     else if (/(?:一面|第一轮面试|初面|面试中)/i.test(text)) stage = '一面';
-    else if (/(?:笔试|测评|在线测试)/i.test(text)) stage = '笔试';
+    else if (/(?:测评|在线测试)/i.test(text)) stage = '已测评';
+    else if (/笔试/i.test(text)) stage = '笔试';
 
     const labelled = text.match(/(?:投递|申请|提交)(?:日期|时间)?\s*[:：]?\s*(20\d{2})\s*[年/.\-]\s*(\d{1,2})\s*[月/.\-]\s*(\d{1,2})\s*日?/);
     const generic = text.match(/(20\d{2})\s*[年/.\-]\s*(\d{1,2})\s*[月/.\-]\s*(\d{1,2})\s*日?/);

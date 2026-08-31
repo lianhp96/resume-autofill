@@ -9,7 +9,7 @@ async function loadStats() {
     return {
       total: records.length,
       today: records.filter(r => r.applicationDate === todayStr || (r.updatedAt && new Date(r.updatedAt).toISOString().slice(0, 10) === todayStr)).length,
-      active: records.filter(r => !['Offer', '已结束', '待投递'].includes(r.stage)).length,
+      active: records.filter(r => !['Offer', '简历挂', '已结束', '待投递'].includes(r.stage)).length,
       offer: records.filter(r => r.stage === 'Offer').length
     };
   } catch (err) {

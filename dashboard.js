@@ -22,6 +22,12 @@ function isRecordVisibleUpcoming(record, referenceTime = Date.now()) {
   return isRecordPendingTodo(record) || isRecordUpcomingSchedule(record, referenceTime);
 }
 
+function matchesPipelineFilter(record, filter) {
+  if (filter === 'all') return true;
+  if (filter === 'todo') return isRecordPendingTodo(record);
+  return record?.stage === filter;
+}
+
 function compareUpcomingRecords(a, b) {
   const aIsTodo = isRecordPendingTodo(a);
   const bIsTodo = isRecordPendingTodo(b);
@@ -53,6 +59,7 @@ if (typeof module !== 'undefined' && module.exports) {
     isRecordPendingTodo,
     isRecordUpcomingSchedule,
     isRecordVisibleUpcoming,
+    matchesPipelineFilter,
     compareUpcomingRecords,
     transitionRecordTodo
   };
@@ -160,6 +167,7 @@ if (typeof document !== 'undefined') (() => {
   let records = [];
   let currentResume = DEFAULT_RESUME;
   let editingRecordId = null;
+  let pipelineFilter = 'all';
   let ocrWorker = null;
   let ocrFile = null;
   let safetyDbPromise = null;
@@ -322,6 +330,7 @@ if (typeof document !== 'undefined') (() => {
 
     // 过滤
     let filtered = records.filter(r => {
+      if (!matchesPipelineFilter(r, pipelineFilter)) return false;
       if (stageVal && r.stage !== stageVal) return false;
       if (searchVal) {
         const text = `${r.company} ${r.position} ${r.city} ${r.nextAction} ${r.recentSchedule}`.toLowerCase();
@@ -349,22 +358,28 @@ if (typeof document !== 'undefined') (() => {
 
     // 渲染阶段漏斗
     const pipelineEl = $('#stagePipeline');
-    pipelineEl.innerHTML = STAGES.map(stage => {
-      const count = records.filter(r => r.stage === stage).length;
-      const isSelected = stageVal === stage ? 'is-selected' : '';
+    const pipelineItems = [
+      { filter: 'all', label: '全部', count: records.length },
+      ...STAGES.map(stage => ({ filter: stage, label: stage, count: records.filter(r => r.stage === stage).length })),
+      { filter: 'todo', label: '待办', count: records.filter(r => isRecordPendingTodo(r)).length }
+    ];
+    pipelineEl.innerHTML = pipelineItems.map(item => {
+      const isSelected = pipelineFilter === item.filter;
+      const isTodo = item.filter === 'todo' ? ' stage-pill--todo' : '';
       return `
-        <div class="stage-pill ${isSelected}" data-stage="${stage}">
-          <span class="stage-pill-title">${stage}</span>
-          <span class="stage-pill-val">${count}</span>
-        </div>
+        <button type="button" class="stage-pill${isTodo}${isSelected ? ' is-selected' : ''}" data-filter="${escapeHtml(item.filter)}" aria-pressed="${isSelected}" aria-label="${escapeHtml(item.label)}，${item.count} 条记录">
+          <span class="stage-pill-title">${escapeHtml(item.label)}</span>
+          <span class="stage-pill-val">${item.count}</span>
+        </button>
       `;
     }).join('');
 
     // 绑定漏斗点击筛选
-    pipelineEl.querySelectorAll('.stage-pill').forEach(pill => {
+    pipelineEl.querySelectorAll('.stage-pill[data-filter]').forEach(pill => {
       pill.addEventListener('click', () => {
-        const s = pill.getAttribute('data-stage');
-        $('#stageFilter').value = ($('#stageFilter').value === s) ? '' : s;
+        const nextFilter = pill.getAttribute('data-filter');
+        pipelineFilter = pipelineFilter === nextFilter ? 'all' : nextFilter;
+        $('#stageFilter').value = STAGES.includes(pipelineFilter) ? pipelineFilter : '';
         renderRecords();
       });
     });
@@ -462,7 +477,10 @@ if (typeof document !== 'undefined') (() => {
 
   // 搜索与过滤事件绑定
   $('#searchInput').addEventListener('input', renderRecords);
-  $('#stageFilter').addEventListener('change', renderRecords);
+  $('#stageFilter').addEventListener('change', () => {
+    pipelineFilter = $('#stageFilter').value || 'all';
+    renderRecords();
+  });
   $('#sortSelect').addEventListener('change', renderRecords);
   $('#refreshDashboardBtn').addEventListener('click', async () => {
     await loadRecords();

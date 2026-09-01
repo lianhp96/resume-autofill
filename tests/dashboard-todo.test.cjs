@@ -6,6 +6,7 @@ const {
   isRecordPendingTodo,
   isRecordUpcomingSchedule,
   isRecordVisibleUpcoming,
+  matchesPipelineFilter,
   compareUpcomingRecords,
   transitionRecordTodo
 } = require('../dashboard.js');
@@ -21,6 +22,16 @@ test('distinguishes scheduled records from explicitly added todos', () => {
 
 test('includes an explicitly added todo without a schedule', () => {
   assert.equal(isRecordPendingTodo({ todoStatus: 'pending', todoCreatedAt: now }, now), true);
+});
+
+test('matches all, stage, and todo pipeline filters independently', () => {
+  const pending = { stage: '一面', todoStatus: 'pending' };
+  const scheduledOnly = { stage: '笔试', scheduleAt: '2026-09-02T10:00' };
+  assert.equal(matchesPipelineFilter(pending, 'all'), true);
+  assert.equal(matchesPipelineFilter(pending, '一面'), true);
+  assert.equal(matchesPipelineFilter(pending, 'todo'), true);
+  assert.equal(matchesPipelineFilter(scheduledOnly, 'todo'), false);
+  assert.equal(matchesPipelineFilter(scheduledOnly, '笔试'), true);
 });
 
 test('keeps a future interview visible after its todo is cancelled or completed', () => {

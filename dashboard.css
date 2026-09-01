@@ -299,14 +299,15 @@ h1 {
 /* Stage Pipeline Funnel */
 .stage-pipeline {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
   padding-bottom: 12px;
   margin-bottom: 18px;
 }
 .stage-pill {
   flex: 1;
   min-width: 100px;
+  min-height: 64px;
   padding: 8px 12px;
   border-radius: 10px;
   background: #fff;
@@ -315,6 +316,7 @@ h1 {
   flex-direction: column;
   gap: 2px;
   cursor: pointer;
+  text-align: left;
   transition: all 0.15s ease;
 }
 .stage-pill:hover, .stage-pill.is-selected {
@@ -330,6 +332,9 @@ h1 {
   font-size: 16px;
   font-weight: 800;
   color: var(--ink);
+}
+.stage-pill--todo {
+  margin-left: auto;
 }
 
 /* Dashboard Grid */
@@ -1089,6 +1094,10 @@ h1 {
 }
 
 @media (max-width: 700px) {
+  .stage-pill {
+    flex: 1 1 92px;
+    min-width: 92px;
+  }
   .llm-log-header {
     flex-direction: column;
   }

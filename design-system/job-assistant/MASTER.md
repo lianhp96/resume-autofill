@@ -181,6 +181,12 @@ Use responsive page padding: `16px` on mobile, `24px` on tablet, and `32px` on d
 - Scheduled interviews may share the same rail, but remain independent from todo state and do not show todo actions unless the user explicitly adds that record as a todo.
 - Todo actions use a minimum `44px` target, visible keyboard focus, persisted status, and a confirmation toast.
 
+### Pipeline Filters
+
+- The pipeline begins with `全部` and ends with `待办`; both use the same card treatment as stage filters.
+- `待办` filters only records explicitly added to todo, while `全部` clears the active filter.
+- Use native buttons with `aria-pressed` so every card is keyboard-operable and its selected state is announced.
+
 ### Inputs
 
 ```css

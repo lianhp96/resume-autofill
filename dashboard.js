@@ -3,7 +3,62 @@
  * 支持投递追踪、可视化简历库编辑、数据安全与离线 OCR 识别
  */
 
-(() => {
+const TODO_STATUS = Object.freeze({
+  PENDING: 'pending',
+  CANCELLED: 'cancelled',
+  COMPLETED: 'completed'
+});
+
+function isRecordPendingTodo(record) {
+  return record?.todoStatus === TODO_STATUS.PENDING;
+}
+
+function isRecordUpcomingSchedule(record, referenceTime = Date.now()) {
+  const scheduleTime = record?.scheduleAt ? new Date(record.scheduleAt).getTime() : NaN;
+  return Number.isFinite(scheduleTime) && scheduleTime >= referenceTime - 86400000;
+}
+
+function isRecordVisibleUpcoming(record, referenceTime = Date.now()) {
+  return isRecordPendingTodo(record) || isRecordUpcomingSchedule(record, referenceTime);
+}
+
+function compareUpcomingRecords(a, b) {
+  const aIsTodo = isRecordPendingTodo(a);
+  const bIsTodo = isRecordPendingTodo(b);
+  if (aIsTodo && bIsTodo) return (b.todoCreatedAt || 0) - (a.todoCreatedAt || 0);
+  if (aIsTodo !== bIsTodo) return aIsTodo ? -1 : 1;
+
+  const aSchedule = a?.scheduleAt ? new Date(a.scheduleAt).getTime() : NaN;
+  const bSchedule = b?.scheduleAt ? new Date(b.scheduleAt).getTime() : NaN;
+  if (Number.isFinite(aSchedule) && Number.isFinite(bSchedule)) return aSchedule - bSchedule;
+  if (Number.isFinite(aSchedule)) return -1;
+  if (Number.isFinite(bSchedule)) return 1;
+  return 0;
+}
+
+function transitionRecordTodo(record, nextStatus, timestamp = Date.now()) {
+  const next = { ...record, todoStatus: nextStatus, updatedAt: timestamp };
+  delete next.todoCancelledAt;
+  delete next.todoCompletedAt;
+
+  if (nextStatus === TODO_STATUS.PENDING) next.todoCreatedAt = timestamp;
+  if (nextStatus === TODO_STATUS.CANCELLED) next.todoCancelledAt = timestamp;
+  if (nextStatus === TODO_STATUS.COMPLETED) next.todoCompletedAt = timestamp;
+  return next;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    TODO_STATUS,
+    isRecordPendingTodo,
+    isRecordUpcomingSchedule,
+    isRecordVisibleUpcoming,
+    compareUpcomingRecords,
+    transitionRecordTodo
+  };
+}
+
+if (typeof document !== 'undefined') (() => {
   'use strict';
 
   // ================= 常量定义 =================
@@ -326,6 +381,7 @@
       tbody.innerHTML = filtered.map(r => {
         const url = r.applicationUrl || r.url || '';
         const hasUrl = /^https?:\/\//i.test(url);
+        const todoPending = isRecordPendingTodo(r);
         const compHtml = hasUrl
           ? `<a class="comp-name comp-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="点击跳转至网申/招聘原链接: ${escapeHtml(url)}">${escapeHtml(r.company)} <span class="link-icon" aria-hidden="true">↗</span></a>`
           : `<span class="comp-name">${escapeHtml(r.company)}</span>`;
@@ -349,9 +405,10 @@
           </td>
           <td class="text-right">
             <div class="table-actions">
-              <button class="btn-sm btn-advance" data-id="${r.id}" title="推进到下一阶段">推进</button>
-              <button class="btn-sm btn-edit" data-id="${r.id}">编辑</button>
-              <button class="btn-sm btn-danger btn-del" data-id="${r.id}">删除</button>
+              <button type="button" class="btn-sm btn-todo" data-id="${r.id}" ${todoPending ? 'disabled aria-disabled="true"' : ''}>${todoPending ? '已待办' : '待办'}</button>
+              <button type="button" class="btn-sm btn-advance" data-id="${r.id}" title="推进到下一阶段">推进</button>
+              <button type="button" class="btn-sm btn-edit" data-id="${r.id}">编辑</button>
+              <button type="button" class="btn-sm btn-danger btn-del" data-id="${r.id}">删除</button>
             </div>
           </td>
         </tr>
@@ -366,27 +423,35 @@
   function renderUpcoming() {
     const listEl = $('#upcomingList');
     const upcoming = records
-      .filter(r => r.scheduleAt && new Date(r.scheduleAt) >= new Date(Date.now() - 86400000))
-      .sort((a, b) => new Date(a.scheduleAt) - new Date(b.scheduleAt));
+      .filter(r => isRecordVisibleUpcoming(r))
+      .sort(compareUpcomingRecords);
 
     if (upcoming.length === 0) {
-      listEl.innerHTML = `<p style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0;">近期暂无日程安排</p>`;
+      listEl.innerHTML = `<p style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0;">近期暂无待办或日程安排</p>`;
       return;
     }
 
     listEl.innerHTML = upcoming.slice(0, 5).map(r => {
       const url = r.applicationUrl || r.url || '';
       const hasUrl = /^https?:\/\//i.test(url);
+      const isTodo = isRecordPendingTodo(r);
+      const todoTime = r.scheduleAt
+        ? r.scheduleAt.replace('T', ' ')
+        : (r.todoCreatedAt ? `添加于 ${new Date(r.todoCreatedAt).toLocaleString('zh-CN', { hour12: false })}` : '待办');
       const titleHtml = hasUrl
-        ? `<a class="schedule-item-title comp-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="点击跳转至网申/招聘原链接: ${escapeHtml(url)}">${escapeHtml(r.company)} · ${escapeHtml(r.recentSchedule || '日程')} <span class="link-icon" aria-hidden="true">↗</span></a>`
-        : `<span class="schedule-item-title">${escapeHtml(r.company)} · ${escapeHtml(r.recentSchedule || '日程')}</span>`;
+        ? `<a class="schedule-item-title comp-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="点击跳转至网申/招聘原链接: ${escapeHtml(url)}">${escapeHtml(r.company)} · ${escapeHtml(r.recentSchedule || r.position || '待办')} <span class="link-icon" aria-hidden="true">↗</span></a>`
+        : `<span class="schedule-item-title">${escapeHtml(r.company)} · ${escapeHtml(r.recentSchedule || r.position || '待办')}</span>`;
 
       return `
-      <div class="schedule-item">
-        <span class="schedule-item-time">${r.scheduleAt.replace('T', ' ')}</span>
+      <article class="schedule-item">
+        <span class="schedule-item-time">${escapeHtml(todoTime)}</span>
         ${titleHtml}
         ${r.nextAction ? `<span class="schedule-item-desc">${escapeHtml(r.nextAction)}</span>` : ''}
-      </div>
+        ${isTodo ? `<div class="schedule-item-actions">
+          <button type="button" class="schedule-action schedule-action-cancel" data-action="todo-cancel" data-id="${r.id}" aria-label="取消 ${escapeHtml(r.company)} 的待办">取消</button>
+          <button type="button" class="schedule-action schedule-action-complete" data-action="todo-complete" data-id="${r.id}" aria-label="完成 ${escapeHtml(r.company)} 的待办">完成待办</button>
+        </div>` : ''}
+      </article>
     `;
     }).join('');
   }
@@ -407,17 +472,65 @@
 
   // 表格操作委托
   $('#recordsTbody').addEventListener('click', (e) => {
-    const id = e.target.getAttribute('data-id');
+    const actionButton = e.target.closest('button[data-id]');
+    const id = actionButton?.getAttribute('data-id');
     if (!id) return;
 
-    if (e.target.classList.contains('btn-advance')) {
+    if (actionButton.classList.contains('btn-todo')) {
+      void addTodo(id);
+    } else if (actionButton.classList.contains('btn-advance')) {
       advanceStage(id);
-    } else if (e.target.classList.contains('btn-edit')) {
+    } else if (actionButton.classList.contains('btn-edit')) {
       openEditModal(id);
-    } else if (e.target.classList.contains('btn-del')) {
+    } else if (actionButton.classList.contains('btn-del')) {
       deleteRecord(id);
     }
   });
+
+  $('#upcomingList').addEventListener('click', (e) => {
+    const actionButton = e.target.closest('button[data-action][data-id]');
+    if (!actionButton) return;
+    const id = actionButton.getAttribute('data-id');
+    if (actionButton.dataset.action === 'todo-cancel') void cancelTodo(id);
+    if (actionButton.dataset.action === 'todo-complete') void completeTodo(id);
+  });
+
+  function findButtonByRecordId(container, id, selector) {
+    return Array.from(container.querySelectorAll(selector)).find(button => button.dataset.id === id);
+  }
+
+  function restoreFocusAfterTodoRemoval(id) {
+    const recordTodoButton = findButtonByRecordId($('#recordsTbody'), id, 'button.btn-todo[data-id]');
+    const nextTodoAction = $('#upcomingList button[data-action]');
+    (recordTodoButton || nextTodoAction || $('#searchInput'))?.focus();
+  }
+
+  async function addTodo(id) {
+    const idx = records.findIndex(r => r.id === id);
+    const record = records[idx];
+    if (!record || isRecordPendingTodo(record)) return;
+    records[idx] = transitionRecordTodo(record, TODO_STATUS.PENDING);
+    await saveRecords(`${record.company} 已加入待办`);
+    findButtonByRecordId($('#upcomingList'), id, 'button[data-action="todo-cancel"][data-id]')?.focus();
+  }
+
+  async function cancelTodo(id) {
+    const idx = records.findIndex(r => r.id === id);
+    const record = records[idx];
+    if (!record || !isRecordPendingTodo(record)) return;
+    records[idx] = transitionRecordTodo(record, TODO_STATUS.CANCELLED);
+    await saveRecords(`已取消 ${record.company} 的待办`);
+    restoreFocusAfterTodoRemoval(id);
+  }
+
+  async function completeTodo(id) {
+    const idx = records.findIndex(r => r.id === id);
+    const record = records[idx];
+    if (!record || !isRecordPendingTodo(record)) return;
+    records[idx] = transitionRecordTodo(record, TODO_STATUS.COMPLETED);
+    await saveRecords(`${record.company} 的待办已完成`);
+    restoreFocusAfterTodoRemoval(id);
+  }
 
   function advanceStage(id) {
     const record = records.find(r => r.id === id);

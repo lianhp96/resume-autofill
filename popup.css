@@ -1,17 +1,17 @@
 :root {
-  --bg: #f8fafc;
+  --bg: #f5f7fa;
   --surface: #ffffff;
-  --surface-soft: #f1f5f9;
-  --ink: #0f172a;
-  --ink-secondary: #334155;
-  --muted: #64748b;
-  --line: #e2e8f0;
-  --primary: #4f64ee;
-  --primary-dark: #3d51cc;
-  --primary-soft: #eff2fe;
-  --green: #10b981;
-  --green-soft: #ecfdf5;
-  --shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06);
+  --surface-soft: #f0f3f7;
+  --ink: #172033;
+  --ink-secondary: #38445c;
+  --muted: #677289;
+  --line: #dce2ec;
+  --primary: #1457d9;
+  --primary-dark: #0f46b6;
+  --primary-soft: #edf4ff;
+  --green: #0b7a55;
+  --green-soft: #eaf8f2;
+  --shadow: 0 4px 20px -2px rgba(23, 32, 51, 0.06);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -40,10 +40,10 @@ button { font: inherit; cursor: pointer; }
   border-radius: 11px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #4f64ee, #3b4cb8);
+  background: linear-gradient(135deg, #1457d9, #0f46b6);
   color: #fff;
   font-size: 20px;
-  box-shadow: 0 4px 12px rgba(79, 100, 238, 0.3);
+  box-shadow: 0 4px 12px rgba(20, 87, 217, 0.3);
   flex-shrink: 0;
 }
 .brand-title {
@@ -116,7 +116,7 @@ button { font: inherit; cursor: pointer; }
   color: var(--primary);
 }
 .popup-nav-item.is-primary:hover {
-  background: #e3e8fd;
+  background: #dce8ff;
 }
 .nav-icon {
   font-size: 15px;
@@ -171,7 +171,7 @@ button { font: inherit; cursor: pointer; }
 .slider {
   position: absolute;
   inset: 0;
-  background: #cbd5e1;
+  background: #c7cfdb;
   border-radius: 20px;
   transition: background 0.2s ease;
 }
@@ -184,7 +184,7 @@ button { font: inherit; cursor: pointer; }
   top: 2px;
   background: #fff;
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  box-shadow: 0 1px 3px rgba(23, 32, 51, 0.25);
   transition: transform 0.2s ease;
 }
 .switch input:checked + .slider {
@@ -198,9 +198,9 @@ button { font: inherit; cursor: pointer; }
   margin: 0 16px 16px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #166534;
+  background: #eaf8f2;
+  border: 1px solid #bcead9;
+  color: #0b684b;
   font-size: 11px;
 }
 .popup-footer strong {
@@ -209,7 +209,7 @@ button { font: inherit; cursor: pointer; }
   font-size: 11px;
 }
 .popup-footer code {
-  background: rgba(22, 101, 52, 0.12);
+  background: rgba(11, 122, 85, 0.12);
   padding: 1px 5px;
   border-radius: 4px;
   font-family: monospace;

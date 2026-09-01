@@ -3,7 +3,59 @@
  * 采用 Shadow DOM 隔离技术，保证与宿主网页样式 100% 零冲突
  */
 
-(() => {
+function formatApplicationDate(year, month, day) {
+  if (![year, month, day].every(Number.isInteger)) return '';
+  const candidate = new Date(year, month - 1, day, 12, 0, 0);
+  if (
+    candidate.getFullYear() !== year
+    || candidate.getMonth() !== month - 1
+    || candidate.getDate() !== day
+  ) return '';
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function parseApplicationDate(value, referenceDate) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+
+  const fullDate = text.match(/^(\d{4})\s*(?:年|[-/.])\s*(\d{1,2})\s*(?:月|[-/.])\s*(\d{1,2})\s*日?$/);
+  if (fullDate) {
+    return formatApplicationDate(Number(fullDate[1]), Number(fullDate[2]), Number(fullDate[3]));
+  }
+
+  const monthDay = text.match(/^(\d{1,2})\s*(?:月|[-/.])\s*(\d{1,2})\s*日?$/);
+  if (!monthDay) return '';
+
+  const month = Number(monthDay[1]);
+  const day = Number(monthDay[2]);
+  const referenceValue = formatApplicationDate(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth() + 1,
+    referenceDate.getDate()
+  );
+
+  // 投递日期不应晚于今天；缺少年份时取最近一次已经发生的同月同日。
+  for (let offset = 0; offset <= 4; offset += 1) {
+    const candidate = formatApplicationDate(referenceDate.getFullYear() - offset, month, day);
+    if (candidate && candidate <= referenceValue) return candidate;
+  }
+  return '';
+}
+
+function resolveApplicationDate(detectedDate, heuristicDate, referenceDate = new Date()) {
+  const reference = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime())
+    ? referenceDate
+    : new Date();
+  return parseApplicationDate(detectedDate, reference)
+    || parseApplicationDate(heuristicDate, reference)
+    || formatApplicationDate(reference.getFullYear(), reference.getMonth() + 1, reference.getDate());
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { resolveApplicationDate };
+}
+
+if (typeof document !== 'undefined') (() => {
   'use strict';
 
   // 避免重复注入
@@ -129,14 +181,14 @@
       align-items: center;
       gap: 6px;
       padding: 8px 12px 8px 10px;
-      background: linear-gradient(135deg, #5367e9, #4053cb);
+      background: linear-gradient(135deg, #1457d9, #0f46b6);
       color: #fff;
       font-size: 13px;
       font-weight: 600;
       border: 1px solid rgba(255, 255, 255, 0.3);
       border-right: none;
       border-radius: 20px 0 0 20px;
-      box-shadow: 0 4px 16px rgba(64, 83, 203, 0.35);
+      box-shadow: 0 4px 16px rgba(15, 70, 182, 0.35);
       cursor: pointer;
       user-select: none;
       touch-action: none;
@@ -144,8 +196,8 @@
     }
     #aja-toggle:hover {
       padding-left: 14px;
-      background: linear-gradient(135deg, #6275f0, #4c5fd6);
-      box-shadow: 0 6px 20px rgba(64, 83, 203, 0.45);
+      background: linear-gradient(135deg, #2d68df, #1457d9);
+      box-shadow: 0 6px 20px rgba(15, 70, 182, 0.45);
     }
     #aja-toggle.hidden {
       display: none;
@@ -157,13 +209,13 @@
     #aja-toggle.free {
       border-radius: 20px;
       border: 1px solid rgba(255, 255, 255, 0.3);
-      box-shadow: 0 4px 16px rgba(64, 83, 203, 0.35);
+      box-shadow: 0 4px 16px rgba(15, 70, 182, 0.35);
     }
     #aja-toggle.snap-left {
       border-radius: 0 20px 20px 0;
       border: 1px solid rgba(255, 255, 255, 0.3);
       border-left: none;
-      box-shadow: -4px 4px 16px rgba(64, 83, 203, 0.35);
+      box-shadow: -4px 4px 16px rgba(15, 70, 182, 0.35);
     }
 
     /* 侧边滑出抽屉面板 */
@@ -177,9 +229,9 @@
       flex-direction: column;
       background: rgba(255, 255, 255, 0.98);
       backdrop-filter: blur(16px);
-      border: 1px solid #e2e8f0;
+      border: 1px solid #dce2ec;
       border-radius: 16px;
-      box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+      box-shadow: 0 12px 40px rgba(23, 32, 51, 0.18);
       user-select: none;
       transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
       transform: translateX(0);
@@ -204,7 +256,7 @@
       align-items: center;
       justify-content: space-between;
       padding: 12px 14px;
-      background: linear-gradient(135deg, #4f64ee, #3d51cc);
+      background: linear-gradient(135deg, #1457d9, #0f46b6);
       color: #fff;
       border-radius: 15px 15px 0 0;
       cursor: move;
@@ -234,7 +286,7 @@
       padding: 2px 6px;
       border-radius: 4px;
       font-weight: normal;
-      color: #e0e7ff;
+      color: #dce8ff;
     }
     .close-btn {
       background: none;
@@ -266,14 +318,14 @@
       width: 5px;
     }
     .drawer-body::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
+      background: #c7cfdb;
       border-radius: 4px;
     }
 
     /* 一键收录卡片 */
     .capture-card {
-      background: linear-gradient(145deg, #f0f4ff, #e6edff);
-      border: 1px solid #c7d7fe;
+      background: linear-gradient(145deg, #edf4ff, #e4edff);
+      border: 1px solid #b9cff8;
       border-radius: 12px;
       padding: 10px;
     }
@@ -285,7 +337,7 @@
       justify-content: center;
       gap: 6px;
       padding: 8px 12px;
-      background: #5367e9;
+      background: #1457d9;
       color: #fff;
       border: none;
       border-radius: 8px;
@@ -302,13 +354,13 @@
       width: 280px;
       padding: 8px 10px;
       border-radius: 7px;
-      background: #1e293b;
+      background: #172033;
       color: #fff;
       font-size: 11px;
       font-weight: 400;
       line-height: 1.5;
       text-align: left;
-      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+      box-shadow: 0 4px 12px rgba(23, 32, 51, 0.22);
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
@@ -322,7 +374,7 @@
       transform: translate(-50%, 0);
     }
     .capture-btn:hover {
-      background: #4053cb;
+      background: #0f46b6;
       transform: translateY(-1px);
     }
     .capture-btn:active {
@@ -334,7 +386,7 @@
       display: none;
       margin-top: 10px;
       padding-top: 10px;
-      border-top: 1px dashed #bfdbfe;
+      border-top: 1px dashed #b9cff8;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -350,15 +402,15 @@
     .form-group label {
       font-size: 11px;
       font-weight: 600;
-      color: #475569;
+      color: #38445c;
     }
     .form-group input, .form-group select, .form-group textarea {
       padding: 5px 8px;
       font-size: 12px;
-      border: 1px solid #cbd5e1;
+      border: 1px solid #c7cfdb;
       border-radius: 6px;
       background: #fff;
-      color: #1e293b;
+      color: #172033;
       outline: none;
       font-family: inherit;
     }
@@ -367,8 +419,8 @@
       min-height: 52px;
     }
     .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-      border-color: #5367e9;
-      box-shadow: 0 0 0 2px rgba(83, 103, 233, 0.15);
+      border-color: #1457d9;
+      box-shadow: 0 0 0 2px rgba(20, 87, 217, 0.15);
     }
     .form-row {
       display: grid;
@@ -383,7 +435,7 @@
     .btn-save-record {
       flex: 1;
       padding: 6px;
-      background: #24a475;
+      background: #0b7a55;
       color: #fff;
       border: none;
       border-radius: 6px;
@@ -392,24 +444,24 @@
       cursor: pointer;
     }
     .btn-save-record:hover {
-      background: #1e8b63;
+      background: #086647;
     }
     .btn-cancel-capture {
       padding: 6px 10px;
-      background: #f1f5f9;
-      color: #64748b;
-      border: 1px solid #cbd5e1;
+      background: #f0f3f7;
+      color: #677289;
+      border: 1px solid #c7cfdb;
       border-radius: 6px;
       font-size: 12px;
       cursor: pointer;
     }
     .btn-cancel-capture:hover {
-      background: #e2e8f0;
+      background: #dce2ec;
     }
 
     /* 简历模块手风琴折叠 */
     .resume-section {
-      border: 1px solid #e2e8f0;
+      border: 1px solid #dce2ec;
       border-radius: 10px;
       background: #fff;
       overflow: hidden;
@@ -419,20 +471,20 @@
       align-items: center;
       justify-content: space-between;
       padding: 8px 10px;
-      background: #f8fafc;
+      background: #f5f7fa;
       font-size: 12px;
       font-weight: 700;
-      color: #334155;
+      color: #38445c;
       cursor: pointer;
       transition: background 0.15s;
     }
     .section-header:hover {
-      background: #f1f5f9;
+      background: #f0f3f7;
     }
     .section-arrow {
       font-size: 10px;
       transition: transform 0.2s;
-      color: #94a3b8;
+      color: #8a95aa;
     }
     .resume-section.collapsed .section-arrow {
       transform: rotate(-90deg);
@@ -449,8 +501,8 @@
 
     /* 经历行卡片 */
     .exp-row {
-      background: #f8fafc;
-      border: 1px solid #f1f5f9;
+      background: #f5f7fa;
+      border: 1px solid #f0f3f7;
       border-radius: 6px;
       padding: 6px;
       display: flex;
@@ -461,9 +513,9 @@
       width: 100%;
       font-size: 11px;
       font-weight: 700;
-      color: #4f64ee;
+      color: #1457d9;
       margin-bottom: 2px;
-      border-bottom: 1px dashed #e2e8f0;
+      border-bottom: 1px dashed #dce2ec;
       padding-bottom: 2px;
     }
 
@@ -473,9 +525,9 @@
       align-items: center;
       padding: 4px 7px;
       background: #ffffff;
-      border: 1px solid #d1d5db;
+      border: 1px solid #dce2ec;
       border-radius: 6px;
-      color: #1e293b;
+      color: #172033;
       font-size: 11px;
       cursor: pointer;
       transition: all 0.12s;
@@ -483,17 +535,17 @@
       text-align: left;
     }
     .field-btn:hover {
-      background: #eff6ff;
-      border-color: #93c5fd;
-      color: #1d4ed8;
+      background: #edf4ff;
+      border-color: #b9cff8;
+      color: #1457d9;
       transform: translateY(-1px);
     }
     .field-btn:active {
-      background: #dbeafe;
+      background: #dce8ff;
       transform: translateY(0);
     }
     .field-key {
-      color: #64748b;
+      color: #677289;
       font-size: 10px;
       margin-right: 4px;
       white-space: nowrap;
@@ -515,8 +567,8 @@
       align-items: center;
       gap: 8px;
       padding: 10px 12px;
-      background: #f8fafc;
-      border-top: 1px solid #e2e8f0;
+      background: #f5f7fa;
+      border-top: 1px solid #dce2ec;
       border-radius: 0 0 15px 15px;
     }
     .footer-btn {
@@ -529,16 +581,16 @@
       font-size: 12px;
       font-weight: 600;
       border-radius: 8px;
-      border: 1px solid #cbd5e1;
+      border: 1px solid #c7cfdb;
       background: #fff;
-      color: #334155;
+      color: #38445c;
       cursor: pointer;
       transition: all 0.15s;
     }
     .footer-btn:hover {
-      background: #eff6ff;
-      border-color: #93c5fd;
-      color: #4f64ee;
+      background: #edf4ff;
+      border-color: #b9cff8;
+      color: #1457d9;
     }
 
     /* 提示 Toast */
@@ -547,7 +599,7 @@
       top: 16px;
       left: 50%;
       transform: translateX(-50%);
-      background: #1e293b;
+      background: #172033;
       color: #fff;
       padding: 7px 14px;
       border-radius: 20px;
@@ -1067,7 +1119,7 @@
     capCity.value = detected.city || heuristic.city || '';
     capStage.value = VALID_STAGES.includes(detected.stage) ? detected.stage : (heuristic.stage || '已投递');
     if (!VALID_STAGES.includes(capStage.value)) capStage.value = '已投递';
-    capDate.value = detected.applicationDate || heuristic.applicationDate || new Date().toISOString().slice(0, 10);
+    capDate.value = resolveApplicationDate(detected.applicationDate, heuristic.applicationDate);
     capDescription.value = detected.jobDescription || heuristic.jobDescription || '';
     capRequirements.value = detected.jobRequirements || heuristic.jobRequirements || '';
     captureForm.classList.remove('hidden');

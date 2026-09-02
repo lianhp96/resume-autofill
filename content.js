@@ -1,5 +1,5 @@
 /**
- * 简历投递与进度管理助手 - Content Script
+ * 网申投递助手 - Content Script
  * 采用 Shadow DOM 隔离技术，保证与宿主网页样式 100% 零冲突
  */
 
@@ -621,16 +621,16 @@ if (typeof document !== 'undefined') (() => {
   // ================= 构建 DOM 结构 =================
   const wrapper = document.createElement('div');
   wrapper.innerHTML = `
-    <div id="aja-toggle" title="展开投递助手 (Ctrl+Shift+F)">
+    <div id="aja-toggle" title="展开网申投递助手 (Ctrl+Shift+F)">
       <span>📝</span>
-      <span>投递助手</span>
+      <span>网申投递助手</span>
     </div>
 
     <div id="aja-drawer" class="collapsed">
       <div class="drawer-header" id="aja-drag-handle">
         <div class="brand-area">
           <div class="brand-icon">🚀</div>
-          <div class="brand-title">秋招求职助手</div>
+          <div class="brand-title">网申投递助手</div>
           <span class="shortcut-badge">Ctrl+Shift+F</span>
         </div>
         <button class="close-btn" id="aja-close-btn" title="收起面板">✕</button>
@@ -1428,5 +1428,5 @@ if (typeof document !== 'undefined') (() => {
     }
   });
 
-  console.log('🚀 [简历投递与进度管理助手] Shadow DOM 侧边栏已挂载。按 Ctrl+Shift+F 唤起。');
+  console.log('🚀 [网申投递助手] Shadow DOM 侧边栏已挂载。按 Ctrl+Shift+F 唤起。');
 })();

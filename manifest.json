@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "简历投递与进度管理助手",
+  "name": "网申投递助手",
   "version": "2.2.2",
-  "description": "秋招网申全链路提效工具：网申表单快速填报、岗位一键提取收录、全屏投递管理看板与可视化简历资料库。",
+  "description": "网申投递助手：快速填写网申表单、收录岗位、追踪投递进度并维护简历资料。",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -23,7 +23,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "简历投递与进度管理助手",
+    "default_title": "网申投递助手",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

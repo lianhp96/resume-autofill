@@ -138,26 +138,107 @@
       .slice(0, 30);
   }
 
+  function extractScope(element) {
+    const scope = typeof element.closest === 'function'
+      ? element.closest('fieldset, [data-autofill-section]')
+      : null;
+    const repeatIndexText = readAttribute(scope, 'data-autofill-repeat-index');
+    return {
+      section: String(readAttribute(scope, 'data-autofill-section') || '').trim().slice(0, 80),
+      label: String(readAttribute(scope, 'data-autofill-label') || '').trim().slice(0, 80),
+      repeatIndex: /^\d+$/.test(String(repeatIndexText || '')) ? Number(repeatIndexText) : null
+    };
+  }
+
+  function isAlreadyFilled(element) {
+    const type = String(element.type || readAttribute(element, 'type') || '').toLowerCase();
+    if (type === 'radio' || type === 'checkbox') return Boolean(element.checked);
+    return Boolean(String(element.value || '').trim());
+  }
+
+  function describePageField(element, documentRef) {
+    const tagName = String(element.tagName || '').toLowerCase();
+    const inputType = String(element.type || readAttribute(element, 'type') || '').toLowerCase();
+    const scope = extractScope(element);
+    return {
+      label: extractPageFieldLabel(element, documentRef),
+      control: tagName === 'textarea' ? 'textarea' : (tagName === 'select' ? 'select' : (inputType || 'text')),
+      required: Boolean(element.required || readAttribute(element, 'required') !== null),
+      section: scope.section,
+      repeatIndex: scope.repeatIndex,
+      hasExistingValue: false,
+      options: extractSelectOptions(element)
+    };
+  }
+
+  function describeChoiceGroup(elements, documentRef) {
+    const first = elements[0];
+    const scope = extractScope(first);
+    const options = elements
+      .map(element => extractPageFieldLabel(element, documentRef))
+      .filter(Boolean)
+      .filter((label, index, labels) => labels.indexOf(label) === index)
+      .slice(0, 30);
+    return {
+      label: scope.label || String(readAttribute(first, 'name') || first.name || '').trim().slice(0, 80),
+      control: String(first.type || readAttribute(first, 'type') || '').toLowerCase(),
+      required: elements.some(element => Boolean(element.required || readAttribute(element, 'required') !== null)),
+      section: scope.section,
+      repeatIndex: scope.repeatIndex,
+      hasExistingValue: false,
+      options
+    };
+  }
+
   function collectPageFields(documentRef) {
     if (!documentRef || typeof documentRef.querySelectorAll !== 'function') return [];
-    return Array.from(documentRef.querySelectorAll('input, textarea, select'))
-      .filter(isVisibleWritableControl)
-      .filter(element => !String(element.value || '').trim())
-      .map((element, index) => {
-        const tagName = String(element.tagName || '').toLowerCase();
-        const inputType = String(element.type || readAttribute(element, 'type') || '').toLowerCase();
-        return {
-          id: `page:${index}`,
-          label: extractPageFieldLabel(element, documentRef),
-          control: tagName === 'textarea' ? 'textarea' : (tagName === 'select' ? 'select' : (inputType || 'text')),
-          required: Boolean(element.required || readAttribute(element, 'required') !== null),
-          section: '',
-          repeatIndex: null,
-          hasExistingValue: false,
-          options: extractSelectOptions(element)
-        };
-      })
-      .filter(field => Boolean(field.label));
+    const entries = [];
+    const groups = new Map();
+    for (const element of Array.from(documentRef.querySelectorAll('input, textarea, select')).filter(isVisibleWritableControl)) {
+      const type = String(element.type || readAttribute(element, 'type') || '').toLowerCase();
+      if (type === 'radio' || type === 'checkbox') {
+        const groupKey = `${type}:${readAttribute(element, 'name') || element.name || entries.length}`;
+        if (!groups.has(groupKey)) {
+          const group = [];
+          groups.set(groupKey, group);
+          entries.push(group);
+        }
+        groups.get(groupKey).push(element);
+      } else if (!isAlreadyFilled(element)) {
+        entries.push(element);
+      }
+    }
+
+    return entries
+      .filter(entry => !Array.isArray(entry) || !entry.some(isAlreadyFilled))
+      .map(entry => Array.isArray(entry)
+        ? describeChoiceGroup(entry, documentRef)
+        : describePageField(entry, documentRef))
+      .filter(field => Boolean(field.label))
+      .map((field, index) => ({ id: `page:${index}`, ...field }));
+  }
+
+  function stableHash(text) {
+    let hash = 2166136261;
+    for (const char of String(text || '')) {
+      hash ^= char.codePointAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function buildFormFingerprint({ location, fields } = {}) {
+    const origin = String(location?.origin || '');
+    const pathname = String(location?.pathname || '');
+    const fieldSignature = (Array.isArray(fields) ? fields : []).map(field => [
+      normalizeLabel(field.label),
+      String(field.control || ''),
+      field.required ? 'required' : 'optional',
+      normalizeLabel(field.section),
+      field.repeatIndex ?? '',
+      (Array.isArray(field.options) ? field.options : []).map(normalizeLabel).join(',')
+    ].join('|')).join('\n');
+    return `form:v1:${stableHash(`${origin}${pathname}\n${fieldSignature}`)}`;
   }
 
   function isCompatible(pageField, profileField) {
@@ -225,6 +306,7 @@
   return {
     DEFAULT_AUTOFILL_POLICY,
     buildProfileSchema,
+    buildFormFingerprint,
     collectPageFields,
     planAutofill
   };

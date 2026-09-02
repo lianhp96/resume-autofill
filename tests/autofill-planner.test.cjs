@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   buildProfileSchema,
+  buildFormFingerprint,
   collectPageFields,
   planAutofill
 } = require('../autofill-planner.js');
@@ -222,4 +223,99 @@ test('collectPageFields resolves labels without interpolating an arbitrary eleme
   };
 
   assert.equal(collectPageFields(doc)[0].label, '毕业院校');
+});
+
+test('collectPageFields groups unchecked radios and describes native selects without page values', () => {
+  const section = {
+    getAttribute(name) {
+      return { 'data-autofill-section': '教育经历', 'data-autofill-repeat-index': '1' }[name] || null;
+    }
+  };
+  const base = {
+    disabled: false,
+    readOnly: false,
+    offsetParent: {},
+    checked: false,
+    closest(selector) {
+      return selector === 'fieldset, [data-autofill-section]' ? section : null;
+    }
+  };
+  const school = {
+    ...base,
+    tagName: 'INPUT', type: 'text', value: '', required: true,
+    getAttribute(name) { return { id: 'school', placeholder: '毕业院校' }[name] || null; }
+  };
+  const degree = {
+    ...base,
+    tagName: 'SELECT', type: 'select-one', value: '', required: true,
+    options: [{ text: '请选择' }, { text: '硕士研究生' }],
+    getAttribute(name) { return name === 'id' ? 'degree' : null; }
+  };
+  const genderSection = {
+    getAttribute(name) {
+      return { 'data-autofill-section': '基本信息', 'data-autofill-label': '性别' }[name] || null;
+    }
+  };
+  const male = {
+    ...base,
+    tagName: 'INPUT', type: 'radio', value: 'male', name: 'gender',
+    closest(selector) {
+      return selector === 'fieldset, [data-autofill-section]' ? genderSection : null;
+    },
+    getAttribute(name) { return { id: 'male', name: 'gender', 'aria-label': '男' }[name] || null; }
+  };
+  const female = {
+    ...male,
+    getAttribute(name) { return { id: 'female', name: 'gender', 'aria-label': '女' }[name] || null; }
+  };
+  const labels = [
+    { textContent: '毕业院校', getAttribute(name) { return name === 'for' ? 'school' : null; } },
+    { textContent: '学历', getAttribute(name) { return name === 'for' ? 'degree' : null; } }
+  ];
+  const doc = {
+    querySelectorAll(selector) {
+      if (selector === 'input, textarea, select') return [school, degree, male, female];
+      if (selector === 'label[for]') return labels;
+      return [];
+    }
+  };
+
+  assert.deepEqual(collectPageFields(doc), [
+    {
+      id: 'page:0', label: '毕业院校', control: 'text', required: true,
+      section: '教育经历', repeatIndex: 1, hasExistingValue: false, options: []
+    },
+    {
+      id: 'page:1', label: '学历', control: 'select', required: true,
+      section: '教育经历', repeatIndex: 1, hasExistingValue: false, options: ['请选择', '硕士研究生']
+    },
+    {
+      id: 'page:2', label: '性别', control: 'radio', required: false,
+      section: '基本信息', repeatIndex: null, hasExistingValue: false, options: ['男', '女']
+    }
+  ]);
+});
+
+test('buildFormFingerprint excludes URL query and changes when the form semantics change', () => {
+  const fields = [
+    { label: '姓名', control: 'text', required: true, section: '基本信息', repeatIndex: null, options: [] },
+    { label: '毕业院校', control: 'text', required: true, section: '教育经历', repeatIndex: 0, options: [] }
+  ];
+  const withQuery = buildFormFingerprint({
+    location: { origin: 'https://jobs.example.com', pathname: '/apply/42', search: '?name=private' },
+    fields
+  });
+  const withoutQuery = buildFormFingerprint({
+    location: { origin: 'https://jobs.example.com', pathname: '/apply/42', search: '' },
+    fields
+  });
+  const changedForm = buildFormFingerprint({
+    location: { origin: 'https://jobs.example.com', pathname: '/apply/42', search: '' },
+    fields: [...fields, { label: '专业', control: 'text', required: true, section: '教育经历', repeatIndex: 0, options: [] }]
+  });
+
+  assert.match(withQuery, /^form:v1:[a-z0-9]+$/);
+  assert.equal(withQuery, withoutQuery);
+  assert.notEqual(withQuery, changedForm);
+  assert.equal(withQuery.includes('private'), false);
 });

@@ -665,6 +665,43 @@ h1 {
   align-items: center;
   width: 100%;
 }
+#kv-优先信息 .kv-row {
+  position: relative;
+  grid-template-columns: 28px 110px minmax(0, 1fr) 34px;
+}
+.kv-drag-handle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #91a0b5;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -3px;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  -webkit-user-drag: none;
+  border-radius: 6px;
+  transition: color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+}
+.kv-drag-handle:hover,
+.kv-drag-handle:focus-visible {
+  color: var(--primary);
+  background: var(--primary-soft);
+  transform: scale(1.08);
+}
+.kv-drag-handle:active,
+#kv-优先信息 .kv-row.is-dragging .kv-drag-handle {
+  cursor: grabbing;
+}
+#kv-优先信息 .kv-row.is-dragging {
+  opacity: 0.55;
+}
 .kv-key, .kv-val {
   width: 100%;
   min-width: 0;

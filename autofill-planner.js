@@ -5,7 +5,10 @@
 })(typeof globalThis !== 'undefined' ? globalThis : null, () => {
   'use strict';
 
-  const SENSITIVE_FIELD_PATTERN = /身份证|证件|护照|银行卡|密码|验证码|手机|电话|邮箱|紧急联系人|民族|宗教|政治面貌|婚姻|婚育|健康|病史|残障|薪资|薪酬|调剂|授权|声明|背景调查|开放题|自我评价|自我介绍|应聘理由|文件|附件|简历上传/i;
+  const DEFAULT_AUTOFILL_POLICY = Object.freeze({
+    neverAutofillPattern: /身份证|证件|护照|银行卡|密码|验证码|手机|电话|邮箱|微信|qq|社交账号|联系人|民族|宗教|政治面貌|婚姻|婚育|健康|病史|残障|薪资|薪酬|调剂|授权|声明|签名|背景调查|开放题|自我评价|自我介绍|应聘理由|文件|附件|简历上传/i,
+    confirmBeforeAutofillPattern: /性别|出生|籍贯|户籍|住址|地址/i
+  });
 
   const FIELD_ALIASES = {
     '姓名': ['姓名', '中文名', '真实姓名', '申请人姓名'],
@@ -24,8 +27,11 @@
       .toLowerCase();
   }
 
-  function isSensitiveLabel(label) {
-    return SENSITIVE_FIELD_PATTERN.test(String(label || ''));
+  function classifyField(label, policy = DEFAULT_AUTOFILL_POLICY) {
+    const text = String(label || '');
+    if (policy.neverAutofillPattern.test(text)) return 'never';
+    if (policy.confirmBeforeAutofillPattern.test(text)) return 'confirm';
+    return 'standard';
   }
 
   function inferKind(label) {
@@ -43,7 +49,7 @@
     return null;
   }
 
-  function buildProfileSchema(profile) {
+  function buildProfileSchema(profile, policy = DEFAULT_AUTOFILL_POLICY) {
     if (!profile || typeof profile !== 'object') return [];
     const descriptors = [];
 
@@ -51,8 +57,9 @@
       if (Array.isArray(sectionData)) {
         sectionData.forEach((entry, repeatIndex) => {
           if (!entry || typeof entry !== 'object') return;
-          for (const [label, value] of Object.entries(entry)) {
-            if (label.startsWith('_') || value === undefined || value === null || value === '' || isSensitiveLabel(label)) continue;
+          for (const label of Object.keys(entry)) {
+            const autofillClass = classifyField(label, policy);
+            if (label.startsWith('_') || autofillClass === 'never') continue;
             const path = `${section}[${repeatIndex}].${label}`;
             descriptors.push({
               id: `profile:${path}`,
@@ -61,13 +68,14 @@
               kind: inferKind(label),
               section,
               repeatIndex,
-              autofillClass: 'standard'
+              autofillClass
             });
           }
         });
       } else if (sectionData && typeof sectionData === 'object') {
-        for (const [label, value] of Object.entries(sectionData)) {
-          if (value === undefined || value === null || value === '' || isSensitiveLabel(label)) continue;
+        for (const label of Object.keys(sectionData)) {
+          const autofillClass = classifyField(label, policy);
+          if (autofillClass === 'never') continue;
           const path = `${section}.${label}`;
           descriptors.push({
             id: `profile:${path}`,
@@ -76,7 +84,7 @@
             kind: inferKind(label),
             section,
             repeatIndex: null,
-            autofillClass: 'standard'
+            autofillClass
           });
         }
       }
@@ -91,8 +99,8 @@
 
   function extractPageFieldLabel(element, documentRef) {
     const id = readAttribute(element, 'id');
-    const explicitLabel = id && documentRef && typeof documentRef.querySelector === 'function'
-      ? documentRef.querySelector(`label[for="${id}"]`)
+    const explicitLabel = id && documentRef && typeof documentRef.querySelectorAll === 'function'
+      ? Array.from(documentRef.querySelectorAll('label[for]')).find(label => readAttribute(label, 'for') === id)
       : null;
     const candidates = [
       explicitLabel && (explicitLabel.innerText || explicitLabel.textContent),
@@ -168,8 +176,8 @@
     return profileField.repeatIndex === null || profileField.repeatIndex === undefined;
   }
 
-  function matchingCandidates(pageField, profileSchema) {
-    if (isSensitiveLabel(pageField.label)) return [];
+  function matchingCandidates(pageField, profileSchema, policy) {
+    if (classifyField(pageField.label, policy) !== 'standard') return [];
     const pageLabel = normalizeLabel(pageField.label);
     const canonical = canonicalField(pageField.label);
 
@@ -181,13 +189,13 @@
     });
   }
 
-  function planAutofill({ pageFields, profileSchema, fingerprint = '' } = {}) {
+  function planAutofill({ pageFields, profileSchema, policy = DEFAULT_AUTOFILL_POLICY, fingerprint = '' } = {}) {
     const mappings = [];
     const unmappedPageFieldIds = [];
     const usedProfileIds = new Set();
 
     for (const pageField of Array.isArray(pageFields) ? pageFields : []) {
-      const candidates = matchingCandidates(pageField, Array.isArray(profileSchema) ? profileSchema : [])
+      const candidates = matchingCandidates(pageField, Array.isArray(profileSchema) ? profileSchema : [], policy)
         .filter(candidate => !usedProfileIds.has(candidate.id));
       if (candidates.length !== 1) {
         unmappedPageFieldIds.push(pageField.id);
@@ -215,6 +223,7 @@
   }
 
   return {
+    DEFAULT_AUTOFILL_POLICY,
     buildProfileSchema,
     collectPageFields,
     planAutofill

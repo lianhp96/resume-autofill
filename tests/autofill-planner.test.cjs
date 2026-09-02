@@ -55,6 +55,26 @@ test('buildProfileSchema exposes field semantics but never profile values', () =
   assert.equal(JSON.stringify(schema).includes('110101199801011234'), false);
 });
 
+test('buildProfileSchema does not read values and excludes all contact identifiers by default', () => {
+  const basicInfo = { '微信号': 'private-wechat', '联系人': '家人', 'QQ': '123456' };
+  Object.defineProperty(basicInfo, '学校', {
+    enumerable: true,
+    get() { throw new Error('schema construction must not access field values'); }
+  });
+
+  assert.deepEqual(buildProfileSchema({ '基本信息': basicInfo }), [
+    {
+      id: 'profile:基本信息.学校',
+      path: '基本信息.学校',
+      label: '学校',
+      kind: 'text',
+      section: '基本信息',
+      repeatIndex: null,
+      autofillClass: 'standard'
+    }
+  ]);
+});
+
 test('planAutofill produces a deterministic, section-aware mapping plan', () => {
   const profileSchema = buildProfileSchema({
     '基本信息': { '姓名': '李明' },
@@ -154,11 +174,12 @@ test('collectPageFields returns a value-free description for empty visible contr
   };
   const hiddenField = { ...visibleField, type: 'hidden' };
   const doc = {
-    querySelectorAll() { return [visibleField, populatedField, hiddenField]; },
-    querySelector(selector) {
-      if (selector === 'label[for="school"]') return { textContent: '毕业院校' };
-      if (selector === 'label[for="email"]') return { textContent: '邮箱' };
-      return null;
+    querySelectorAll(selector) {
+      if (selector === 'input, textarea, select') return [visibleField, populatedField, hiddenField];
+      if (selector === 'label[for]') {
+        return [{ textContent: '毕业院校', getAttribute(name) { return name === 'for' ? 'school' : null; } }];
+      }
+      return [];
     }
   };
 
@@ -174,4 +195,31 @@ test('collectPageFields returns a value-free description for empty visible contr
       options: []
     }
   ]);
+});
+
+test('collectPageFields resolves labels without interpolating an arbitrary element id into a selector', () => {
+  const field = {
+    tagName: 'INPUT',
+    type: 'text',
+    value: '',
+    required: false,
+    disabled: false,
+    readOnly: false,
+    offsetParent: {},
+    getAttribute(name) { return name === 'id' ? 'school\"]bad' : null; },
+    closest() { return null; }
+  };
+  const label = {
+    textContent: '毕业院校',
+    getAttribute(name) { return name === 'for' ? 'school\"]bad' : null; }
+  };
+  const doc = {
+    querySelectorAll(selector) {
+      if (selector === 'input, textarea, select') return [field];
+      if (selector === 'label[for]') return [label];
+      return [];
+    }
+  };
+
+  assert.equal(collectPageFields(doc)[0].label, '毕业院校');
 });

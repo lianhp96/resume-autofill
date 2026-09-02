@@ -287,7 +287,7 @@ test('collectPageFields groups unchecked radios and describes native selects wit
     },
     {
       id: 'page:1', label: '学历', control: 'select', required: true,
-      section: '教育经历', repeatIndex: 1, hasExistingValue: false, options: ['请选择', '硕士研究生']
+      section: '教育经历', repeatIndex: 1, hasExistingValue: false, options: ['硕士研究生']
     },
     {
       id: 'page:2', label: '性别', control: 'radio', required: false,
@@ -318,4 +318,78 @@ test('buildFormFingerprint excludes URL query and changes when the form semantic
   assert.equal(withQuery, withoutQuery);
   assert.notEqual(withQuery, changedForm);
   assert.equal(withQuery.includes('private'), false);
+
+  const sameFormDifferentJob = buildFormFingerprint({
+    location: { origin: 'https://jobs.example.com', pathname: '/apply/43', search: '' },
+    fields
+  });
+  assert.equal(withoutQuery, sameFormDifferentJob);
+});
+
+test('collectPageFields keeps same-named radio groups separate in repeated scopes', () => {
+  const firstScope = {
+    getAttribute(name) {
+      return { 'data-autofill-section': '教育经历', 'data-autofill-repeat-index': '0', 'data-autofill-label': '是否统招' }[name] || null;
+    }
+  };
+  const secondScope = {
+    getAttribute(name) {
+      return { 'data-autofill-section': '教育经历', 'data-autofill-repeat-index': '1', 'data-autofill-label': '是否统招' }[name] || null;
+    }
+  };
+  function radio(id, scope) {
+    return {
+      tagName: 'INPUT', type: 'radio', value: 'yes', name: 'full-time', checked: false,
+      disabled: false, readOnly: false, offsetParent: {},
+      getAttribute(name) { return { id, name: 'full-time', 'aria-label': '是' }[name] || null; },
+      closest(selector) { return selector === 'fieldset, [data-autofill-section]' ? scope : null; }
+    };
+  }
+  const doc = {
+    querySelectorAll(selector) {
+      if (selector === 'input, textarea, select') return [radio('first', firstScope), radio('second', secondScope)];
+      if (selector === 'label[for]') return [];
+      return [];
+    }
+  };
+
+  assert.deepEqual(collectPageFields(doc).map(field => ({
+    label: field.label,
+    section: field.section,
+    repeatIndex: field.repeatIndex
+  })), [
+    { label: '是否统招', section: '教育经历', repeatIndex: 0 },
+    { label: '是否统招', section: '教育经历', repeatIndex: 1 }
+  ]);
+});
+
+test('collectPageFields uses a fieldset legend and drops labels containing a personal value', () => {
+  const fieldset = {
+    getAttribute() { return null; },
+    querySelector(selector) { return selector === 'legend' ? { textContent: '教育经历' } : null; }
+  };
+  const school = {
+    tagName: 'INPUT', type: 'text', value: '', disabled: false, readOnly: false, offsetParent: {},
+    getAttribute(name) { return { id: 'school', placeholder: '毕业院校' }[name] || null; },
+    closest(selector) { return selector === 'fieldset, [data-autofill-section]' ? fieldset : null; }
+  };
+  const leakedLabel = {
+    tagName: 'INPUT', type: 'text', value: '', disabled: false, readOnly: false, offsetParent: {},
+    getAttribute(name) { return name === 'aria-label' ? '请输入张三@example.com' : null; },
+    closest() { return null; }
+  };
+  const doc = {
+    querySelectorAll(selector) {
+      if (selector === 'input, textarea, select') return [school, leakedLabel];
+      if (selector === 'label[for]') return [];
+      return [];
+    }
+  };
+
+  assert.deepEqual(collectPageFields(doc), [
+    {
+      id: 'page:0', label: '毕业院校', control: 'text', required: false,
+      section: '教育经历', repeatIndex: null, hasExistingValue: false, options: []
+    }
+  ]);
 });

@@ -21,10 +21,26 @@
     '手机': ['手机', '手机号', '联系电话', '移动电话']
   };
 
+  const scopeIds = new WeakMap();
+  let nextScopeId = 0;
+
   function normalizeLabel(value) {
     return String(value || '')
       .replace(/[\s:*：()（）\[\]【】_-]/g, '')
       .toLowerCase();
+  }
+
+  function sanitizeDescriptorText(value) {
+    const text = String(value || '')
+      .replace(/^(?:请输入|请选择|请填写)\s*/i, '')
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim()
+      .slice(0, 80);
+    if (!text) return '';
+    if (/[^\s@]+@[\w.-]+\.[a-z]{2,}/i.test(text)) return '';
+    if (/1[3-9]\d{9}/.test(text)) return '';
+    if (/\d{15,18}[\dXx]?/.test(text)) return '';
+    return text;
   }
 
   function classifyField(label, policy = DEFAULT_AUTOFILL_POLICY) {
@@ -109,11 +125,7 @@
       readAttribute(element, 'name')
     ];
     for (const candidate of candidates) {
-      const label = String(candidate || '')
-        .replace(/^(?:请输入|请选择|请填写)\s*/i, '')
-        .replace(/[\r\n\t]+/g, ' ')
-        .trim()
-        .slice(0, 80);
+      const label = sanitizeDescriptorText(candidate);
       if (label) return label;
     }
     return '';
@@ -133,7 +145,7 @@
   function extractSelectOptions(element) {
     if (String(element.tagName || '').toLowerCase() !== 'select' || !element.options) return [];
     return Array.from(element.options)
-      .map(option => String(option.text || option.textContent || option.label || '').trim().slice(0, 80))
+      .map(option => sanitizeDescriptorText(option.text || option.textContent || option.label))
       .filter(Boolean)
       .slice(0, 30);
   }
@@ -142,12 +154,24 @@
     const scope = typeof element.closest === 'function'
       ? element.closest('fieldset, [data-autofill-section]')
       : null;
+    const identityTarget = scope || element.form || null;
     const repeatIndexText = readAttribute(scope, 'data-autofill-repeat-index');
+    const legend = scope && typeof scope.querySelector === 'function' ? scope.querySelector('legend') : null;
     return {
-      section: String(readAttribute(scope, 'data-autofill-section') || '').trim().slice(0, 80),
-      label: String(readAttribute(scope, 'data-autofill-label') || '').trim().slice(0, 80),
-      repeatIndex: /^\d+$/.test(String(repeatIndexText || '')) ? Number(repeatIndexText) : null
+      section: sanitizeDescriptorText(readAttribute(scope, 'data-autofill-section') || readAttribute(scope, 'aria-label') || (legend && (legend.innerText || legend.textContent))),
+      label: sanitizeDescriptorText(readAttribute(scope, 'data-autofill-label')),
+      repeatIndex: /^\d+$/.test(String(repeatIndexText || '')) ? Number(repeatIndexText) : null,
+      key: scopeIdentity(identityTarget)
     };
+  }
+
+  function scopeIdentity(element) {
+    if (!element || (typeof element !== 'object' && typeof element !== 'function')) return 'root';
+    if (!scopeIds.has(element)) {
+      nextScopeId += 1;
+      scopeIds.set(element, `scope:${nextScopeId}`);
+    }
+    return scopeIds.get(element);
   }
 
   function isAlreadyFilled(element) {
@@ -180,7 +204,7 @@
       .filter((label, index, labels) => labels.indexOf(label) === index)
       .slice(0, 30);
     return {
-      label: scope.label || String(readAttribute(first, 'name') || first.name || '').trim().slice(0, 80),
+      label: scope.label || sanitizeDescriptorText(readAttribute(first, 'name') || first.name),
       control: String(first.type || readAttribute(first, 'type') || '').toLowerCase(),
       required: elements.some(element => Boolean(element.required || readAttribute(element, 'required') !== null)),
       section: scope.section,
@@ -197,7 +221,7 @@
     for (const element of Array.from(documentRef.querySelectorAll('input, textarea, select')).filter(isVisibleWritableControl)) {
       const type = String(element.type || readAttribute(element, 'type') || '').toLowerCase();
       if (type === 'radio' || type === 'checkbox') {
-        const groupKey = `${type}:${readAttribute(element, 'name') || element.name || entries.length}`;
+        const groupKey = `${type}:${extractScope(element).key}:${readAttribute(element, 'name') || element.name || entries.length}`;
         if (!groups.has(groupKey)) {
           const group = [];
           groups.set(groupKey, group);
@@ -229,7 +253,7 @@
 
   function buildFormFingerprint({ location, fields } = {}) {
     const origin = String(location?.origin || '');
-    const pathname = String(location?.pathname || '');
+    const pathname = normalizePathTemplate(location?.pathname);
     const fieldSignature = (Array.isArray(fields) ? fields : []).map(field => [
       normalizeLabel(field.label),
       String(field.control || ''),
@@ -239,6 +263,16 @@
       (Array.isArray(field.options) ? field.options : []).map(normalizeLabel).join(',')
     ].join('|')).join('\n');
     return `form:v1:${stableHash(`${origin}${pathname}\n${fieldSignature}`)}`;
+  }
+
+  function normalizePathTemplate(pathname) {
+    return String(pathname || '/').split('/').map(segment => (
+      /^\d+$/.test(segment)
+      || /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(segment)
+      || /^[0-9a-f]{16,}$/i.test(segment)
+        ? ':id'
+        : segment
+    )).join('/') || '/';
   }
 
   function isCompatible(pageField, profileField) {

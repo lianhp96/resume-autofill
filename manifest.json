@@ -3,11 +3,6 @@
   "name": "网申投递助手",
   "version": "1.0",
   "description": "网申投递助手：快速填写网申表单、收录岗位、追踪投递进度并维护简历资料。",
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  },
   "permissions": [
     "storage",
     "tabs",
@@ -24,12 +19,7 @@
   },
   "action": {
     "default_title": "网申投递助手",
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {
@@ -39,14 +29,12 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "web_accessible_resources": [
     {
       "resources": [
-        "dashboard.html",
-        "ocr/*",
-        "icons/*"
+        "dashboard.html"
       ],
       "matches": ["<all_urls>"]
     }

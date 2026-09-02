@@ -63,7 +63,6 @@ LLM 调用失败时会回退到本地规则识别。AI 配置页底部的“LLM 
 
 - 简历资料、投递记录和设置使用 `chrome.storage.local` 保存。
 - 历史备份快照使用浏览器 IndexedDB 保存。
-- OCR 识别资源随扩展内置，截图识别可以离线完成。
 - AI 解析是例外：只有在配置并启用后，岗位页面文字才会发送到外部模型接口。
 - 扩展通过 Manifest V3 的 content script 运行在 HTTP(S) 网页中；Chrome 内置页面、扩展商店等受限制页面不支持注入。
 
@@ -83,8 +82,6 @@ content.js          网页侧栏、简历字段插入和岗位收录
 popup.html/js/css   浏览器工具栏快捷面板
 dashboard.html/js   投递看板、简历资料库、备份和 AI 配置
 dashboard.css       看板样式
-ocr/                离线 Tesseract 资源
-tests/              Node.js 测试
 ```
 
 ## 本地检查
@@ -96,5 +93,4 @@ node --check background.js
 node --check content.js
 node --check dashboard.js
 node --check popup.js
-node --test tests/*.test.cjs
 ```

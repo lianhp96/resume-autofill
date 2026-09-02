@@ -40,7 +40,6 @@
           <summary>更多操作</summary>
           <div class="top-tools-menu">
             <button class="btn" id="refreshDashboardBtn">刷新看板</button>
-            <button class="btn" id="openOcrModalBtn">截图识别</button>
             <button class="btn" id="openExcelExportModalBtn">导出 Excel</button>
             <button class="btn" id="exportDataBtn">导出备份</button>
           </div>
@@ -429,72 +428,9 @@
     </div>
   </dialog>
 
-  <!-- ================= 模态弹窗: OCR 截图识别 ================= -->
-  <dialog id="ocrModal" class="modal-dialog">
-    <div class="modal-header">
-      <h2>🖼️ 截图智能识别录入</h2>
-      <button class="modal-close-btn" id="closeOcrModalBtn">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="ocr-dropzone" id="ocrDropzone">
-        <div class="ocr-prompt" id="ocrPrompt">
-          <div class="ocr-icon">📸</div>
-          <p><strong>点击选择</strong> 或 <strong>直接拖拽截图</strong> 到此处</p>
-          <span>支持微信/飞书截图、网申完成页面、面试邮件截图 (支持 Ctrl+V 粘贴)</span>
-        </div>
-        <img id="ocrPreviewImg" class="ocr-preview hidden" alt="截图预览">
-        <input type="file" id="ocrFileInput" accept="image/*" hidden>
-      </div>
-      <div class="ocr-progress-bar hidden" id="ocrProgress">
-        <div class="ocr-progress-inner" id="ocrProgressInner"></div>
-        <span class="ocr-status-text" id="ocrStatusText">正在识别文字中...</span>
-      </div>
-      <div class="ocr-result-form hidden" id="ocrResultForm">
-        <h4>识别结果 (请核对后存入)</h4>
-        <div class="form-grid">
-          <div class="form-item">
-            <label>识别公司</label>
-            <input type="text" id="ocr-company">
-          </div>
-          <div class="form-item">
-            <label>识别岗位</label>
-            <input type="text" id="ocr-position">
-          </div>
-          <div class="form-item">
-            <label>识别日期</label>
-            <input type="date" id="ocr-date">
-          </div>
-          <div class="form-item">
-            <label>识别阶段</label>
-            <select id="ocr-stage">
-              <option value="已投递">已投递</option>
-              <option value="已测评">已测评</option>
-              <option value="笔试">笔试</option>
-              <option value="一面">一面</option>
-              <option value="二面">二面</option>
-              <option value="HR面">HR面</option>
-              <option value="Offer">Offer</option>
-              <option value="简历挂">简历挂</option>
-              <option value="待投递">待投递</option>
-              <option value="已结束">已结束</option>
-            </select>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button type="button" class="btn" id="cancelOcrBtn">关闭</button>
-      <button type="button" class="btn btn-primary" id="startOcrBtn" disabled>开始识别</button>
-      <button type="button" class="btn btn-primary hidden" id="saveOcrRecordBtn">✓ 存入投递记录</button>
-    </div>
-  </dialog>
-
   <!-- 全局 Toast 提示 -->
   <div class="toast" id="globalToast" role="status"></div>
 
-  <!-- 离线 OCR 基础依赖优先加载 -->
-  <script src="./ocr/tesseract.min.js"></script>
-  <script src="./ocr/chi_sim-data.js"></script>
   <!-- 看板核心逻辑 -->
   <script src="dashboard.js"></script>
 </body>

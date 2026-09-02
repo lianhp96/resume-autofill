@@ -8,10 +8,10 @@
 </head>
 <body>
   <header class="popup-header">
-    <div class="brand-mark">🚀</div>
+    <div class="brand-mark" aria-hidden="true">网申</div>
     <div class="brand-text">
       <div class="brand-title">网申投递助手</div>
-      <div class="brand-subtitle">求职提效一体化系统 v2.2.2</div>
+      <div class="brand-subtitle">求职提效一体化系统 v1.0</div>
     </div>
   </header>
 
@@ -36,17 +36,17 @@
 
   <nav class="popup-nav">
     <button class="popup-nav-item is-primary" data-target="">
-      <span class="nav-icon">📊</span>
+      <span class="nav-icon" aria-hidden="true">01</span>
       <span class="nav-label">投递追踪看板</span>
       <span class="nav-arrow">→</span>
     </button>
     <button class="popup-nav-item" data-target="#resume">
-      <span class="nav-icon">📝</span>
+      <span class="nav-icon" aria-hidden="true">02</span>
       <span class="nav-label">我的简历资料库</span>
       <span class="nav-arrow">→</span>
     </button>
     <button class="popup-nav-item" data-target="#safety">
-      <span class="nav-icon">⚙️</span>
+      <span class="nav-icon" aria-hidden="true">03</span>
       <span class="nav-label">数据安全与备份</span>
       <span class="nav-arrow">→</span>
     </button>
@@ -58,7 +58,7 @@
       <div class="setting-desc">在网页右侧显示“投递助手”胶囊入口</div>
     </div>
     <label class="switch" title="切换悬浮胶囊显示">
-      <input type="checkbox" id="capsuleToggle" checked>
+      <input type="checkbox" id="capsuleToggle" checked aria-label="显示网页悬浮助手">
       <span class="slider"></span>
     </label>
   </section>
@@ -69,13 +69,13 @@
       <div class="setting-desc">悬浮胶囊可拖到任意位置，弹窗按住顶栏也可拖动</div>
     </div>
     <label class="switch" title="切换自由拖拽">
-      <input type="checkbox" id="freeDragToggle">
+      <input type="checkbox" id="freeDragToggle" aria-label="启用胶囊自由拖拽">
       <span class="slider"></span>
     </label>
   </section>
 
   <footer class="popup-footer">
-    <strong>💡 提示</strong>
+    <strong>快捷提示</strong>
     <p>在任意招聘网站按 <code>Ctrl+Shift+F</code> 可唤起侧边栏辅助填报与一键收录。</p>
   </footer>
 

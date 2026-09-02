@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "网申投递助手",
-  "version": "2.2.2",
+  "version": "1.0",
   "description": "网申投递助手：快速填写网申表单、收录岗位、追踪投递进度并维护简历资料。",
   "icons": {
     "16": "icons/icon16.png",

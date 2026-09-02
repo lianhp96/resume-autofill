@@ -9,8 +9,8 @@
 </head>
 <body>
   <div class="app-layout">
-    <!-- 左侧常驻导航栏 -->
-    <aside class="app-sidebar">
+    <!-- 顶部主导航：保留既有选项卡与操作行为 -->
+    <header class="app-sidebar">
       <div class="sidebar-brand">
         <div class="brand-mark" aria-hidden="true">网申</div>
         <div class="sidebar-title">网申投递助手</div>
@@ -35,83 +35,64 @@
         </button>
       </nav>
 
-      <div class="sidebar-footer">
-        <strong>本周节奏</strong>
-        <p id="sidebarRhythm">正在加载日程与待办…</p>
+      <div class="top-actions" id="topActionsContainer">
+        <details class="top-tools">
+          <summary>更多操作</summary>
+          <div class="top-tools-menu">
+            <button class="btn" id="refreshDashboardBtn">刷新看板</button>
+            <button class="btn" id="openOcrModalBtn">截图识别</button>
+            <button class="btn" id="openExcelExportModalBtn">导出 Excel</button>
+            <button class="btn" id="exportDataBtn">导出备份</button>
+          </div>
+        </details>
+        <button class="btn btn-primary" id="addRecordBtn">新增投递</button>
       </div>
-    </aside>
+    </header>
 
     <!-- 右侧主内容区域 -->
     <main class="shell">
-      <!-- 顶部功能栏 -->
-      <header class="topbar">
+      <!-- 投递台账概览 -->
+      <header class="topbar is-records-tab">
         <div class="brand">
           <div>
-            <div class="page-kicker" id="tabKicker">JOB TRACKING DASHBOARD</div>
-            <h1 id="tabTitle">投递追踪看板</h1>
-            <p class="subtitle" id="tabSubtitle">全面监控网申进度、面试安排与全链路阶段流转</p>
+            <div class="page-kicker" id="tabKicker">APPLICATION LEDGER · 2026</div>
+            <h1 id="tabTitle">每一份投递，都有清晰去向。</h1>
+            <p class="subtitle" id="tabSubtitle">状态、下一步、待办和日程围绕同一份投递记录展开，减少不必要的卡片和装饰。</p>
           </div>
         </div>
-        <div class="top-actions" id="topActionsContainer">
-          <button class="btn" id="refreshDashboardBtn"><span class="icon">↻</span>刷新看板</button>
-          <button class="btn" id="openOcrModalBtn"><span class="icon">🖼️</span>截图识别</button>
-          <button class="btn" id="openExcelExportModalBtn"><span class="icon">📊</span>导出 Excel</button>
-          <button class="btn" id="exportDataBtn"><span class="icon">📤</span>导出备份</button>
-          <button class="btn btn-primary" id="addRecordBtn"><span class="icon">+</span>新增投递</button>
+        <div class="stats" aria-label="投递概览">
+          <div class="stat-card"><div class="stat-top"><span>全部投递</span></div><div class="stat-number" id="totalCount">0</div></div>
+          <div class="stat-card"><div class="stat-top"><span>进行中</span></div><div class="stat-number" id="activeCount">0</div></div>
+          <div class="stat-card"><div class="stat-top"><span>近期日程</span></div><div class="stat-number" id="weekCount">0</div></div>
+          <div class="stat-card"><div class="stat-top"><span>待办</span></div><div class="stat-number" id="pendingTodoCount">0</div></div>
         </div>
+        <aside class="side-panel" aria-label="近期待办与面试安排">
+          <div class="schedule-card">
+            <div class="card-head">
+              <div>
+                <span class="schedule-kicker">近期计划</span>
+                <h3>待办与面试安排</h3>
+              </div>
+              <span class="schedule-count" id="upcomingCount" aria-live="polite">0 项</span>
+            </div>
+            <div class="schedule-list" id="upcomingList"></div>
+          </div>
+        </aside>
       </header>
 
       <!-- ================= TAB 1: 投递追踪看板 ================= -->
       <section class="tab-content is-active" id="records-tab">
-        <!-- 统计指标卡片 -->
-        <div class="stats">
-          <div class="stat-card">
-            <div class="stat-top">
-              <span>总投递岗位</span>
-              <div class="stat-icon">📑</div>
-            </div>
-            <div class="stat-number" id="totalCount">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-top">
-              <span>今日投递/更新</span>
-              <div class="stat-icon">⚡</div>
-            </div>
-            <div class="stat-number" id="todayCount">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-top">
-              <span>进行中流程</span>
-              <div class="stat-icon">🔄</div>
-            </div>
-            <div class="stat-number" id="activeCount">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-top">
-              <span>近期日程/面试</span>
-              <div class="stat-icon">📅</div>
-            </div>
-            <div class="stat-number" id="weekCount">0</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-top">
-              <span>已收获 Offer</span>
-              <div class="stat-icon">🎉</div>
-            </div>
-            <div class="stat-number highlight-offer" id="offerCount">0</div>
-          </div>
-        </div>
-
-        <!-- 阶段漏斗与筛选栏 -->
-        <div class="stage-pipeline" id="stagePipeline"></div>
-
         <!-- 主操作面板 -->
         <div class="dashboard-grid">
+          <aside class="pipeline-panel" aria-label="按状态查看">
+            <h2>按状态查看</h2>
+            <div class="stage-pipeline" id="stagePipeline"></div>
+          </aside>
           <div class="main-panel">
             <!-- 搜索与筛选工具条 -->
             <div class="filter-bar">
               <div class="search-wrap">
-                <span class="search-icon">🔍</span>
+                <span class="search-icon" aria-hidden="true">⌕</span>
                 <input type="text" id="searchInput" placeholder="搜索公司、岗位名称、城市或下一步行动...">
               </div>
               <select id="stageFilter" class="select-control">
@@ -153,20 +134,11 @@
                 </table>
               </div>
               <div class="empty-state hidden" id="recordsEmptyState">
-                <div class="empty-icon">📭</div>
+                <div class="empty-icon" aria-hidden="true">—</div>
                 <h3>暂无符合条件的投递记录</h3>
                 <p>点击上方“新增投递”或在招聘页面点击“一键收录”添加新记录。</p>
               </div>
-            </div>
-          </div>
-
-          <!-- 右侧边栏：未来日程与行动 -->
-          <div class="side-panel">
-            <div class="schedule-card">
-              <div class="card-head">
-                <h3>📅 近期待办与面试安排</h3>
-              </div>
-              <div class="schedule-list" id="upcomingList"></div>
+              <nav class="table-pagination hidden" id="recordsPagination" aria-label="投递记录分页"></nav>
             </div>
           </div>
         </div>
@@ -182,7 +154,7 @@
             <button class="btn" id="resumeExportJsonBtn">导出简历 JSON</button>
             <button class="btn" id="resumeImportJsonBtn">导入简历 JSON</button>
             <button class="btn" id="resumeResetSeedBtn">重置为示例</button>
-            <button class="btn btn-primary" id="saveAllResumeBtn">💾 保存并实时同步</button>
+            <button class="btn btn-primary" id="saveAllResumeBtn">保存并实时同步</button>
             <input type="file" id="resumeFileInput" accept=".json,application/json" hidden>
           </div>
         </div>
@@ -191,7 +163,7 @@
           <!-- 优先信息 -->
           <div class="editor-card" id="card-priority">
             <div class="editor-card-head">
-              <h3>⭐ 优先信息 (常用高频字段)</h3>
+              <h3>优先信息 <span>常用高频字段</span></h3>
               <button type="button" class="btn-sm" data-action="add-kv" data-section="优先信息">+ 添加字段</button>
             </div>
             <div class="kv-container" id="kv-优先信息"></div>
@@ -200,7 +172,7 @@
           <!-- 基本信息 -->
           <div class="editor-card" id="card-basic">
             <div class="editor-card-head">
-              <h3>👤 基本信息</h3>
+              <h3>基本信息</h3>
               <button type="button" class="btn-sm" data-action="add-kv" data-section="基本信息">+ 添加字段</button>
             </div>
             <div class="kv-container" id="kv-基本信息"></div>
@@ -209,7 +181,7 @@
           <!-- 教育经历 -->
           <div class="editor-card full-col" id="card-edu">
             <div class="editor-card-head">
-              <h3>🎓 教育经历</h3>
+              <h3>教育经历</h3>
               <button type="button" class="btn-sm" data-action="add-exp" data-section="教育经历">+ 添加教育经历</button>
             </div>
             <div class="exp-container" id="exp-教育经历"></div>
@@ -218,7 +190,7 @@
           <!-- 实习经历 -->
           <div class="editor-card full-col" id="card-intern">
             <div class="editor-card-head">
-              <h3>💼 实习经历</h3>
+              <h3>实习经历</h3>
               <button type="button" class="btn-sm" data-action="add-exp" data-section="实习经历">+ 添加实习经历</button>
             </div>
             <div class="exp-container" id="exp-实习经历"></div>
@@ -227,7 +199,7 @@
           <!-- 项目经历 -->
           <div class="editor-card full-col" id="card-project">
             <div class="editor-card-head">
-              <h3>🚀 项目经历</h3>
+              <h3>项目经历</h3>
               <button type="button" class="btn-sm" data-action="add-exp" data-section="项目经历">+ 添加项目经历</button>
             </div>
             <div class="exp-container" id="exp-项目经历"></div>
@@ -236,7 +208,7 @@
           <!-- 竞赛与技能 -->
           <div class="editor-card full-col" id="card-skills">
             <div class="editor-card-head">
-              <h3>🏆 竞赛、论文与综合技能</h3>
+              <h3>竞赛、论文与综合技能</h3>
               <button type="button" class="btn-sm" data-action="add-kv" data-section="竞赛与技能">+ 添加字段</button>
             </div>
             <div class="kv-container" id="kv-竞赛与技能"></div>
@@ -248,7 +220,7 @@
       <section class="tab-content" id="safety-tab">
         <div class="safety-wrapper">
           <div class="safety-box">
-            <h2>🛡️ 本地数据安全保障</h2>
+            <h2>本地数据安全保障</h2>
             <p class="safety-desc">所有投递数据与简历配置 100% 存储于您的浏览器本地（<code>chrome.storage.local</code>），不经过任何第三方服务器，绝对保护您的求职隐私。</p>
 
             <div class="safety-cards-grid">
@@ -266,10 +238,10 @@
             </div>
 
             <div class="safety-btn-group">
-              <button class="btn btn-primary" id="exportFullBackupBtn">📥 导出完整数据备份 (JSON)</button>
-              <button class="btn" id="importFullBackupBtn">📤 导入备份文件 (兼容旧版)</button>
-              <button class="btn" id="restoreLastSnapshotBtn">⏪ 恢复上一历史快照</button>
-              <button class="btn btn-danger" id="clearAllDataBtn">⚠️ 清空所有数据</button>
+              <button class="btn btn-primary" id="exportFullBackupBtn">导出完整数据备份 (JSON)</button>
+              <button class="btn" id="importFullBackupBtn">导入备份文件 (兼容旧版)</button>
+              <button class="btn" id="restoreLastSnapshotBtn">恢复上一历史快照</button>
+              <button class="btn btn-danger" id="clearAllDataBtn">清空所有数据</button>
               <input type="file" id="fullBackupFileInput" accept=".json,application/json" hidden>
             </div>
           </div>
@@ -280,7 +252,7 @@
       <section class="tab-content" id="llm-tab">
         <div class="safety-wrapper">
           <div class="safety-box">
-            <h2>🤖 AI 岗位一键收录解析</h2>
+            <h2>AI 岗位一键收录解析</h2>
             <p class="safety-desc">开启后，在招聘页面点击「一键收录当前岗位」时将调用你配置的大模型，把岗位 JD 正文解析为公司 / 岗位 / 城市 / 阶段 / 投递日期并填入微调表单。未开启或调用失败时自动回退到本地规则识别。</p>
 
             <div class="llm-config-grid">
@@ -320,15 +292,15 @@
             <p class="verify-hint" id="llmTestHint">提示：JD 文本将发送到你所填写的服务商用于解析，请勿在此配置含个人隐私的账号。</p>
 
             <div class="safety-btn-group">
-              <button class="btn" id="llmTestBtn">🔌 测试连接</button>
-              <button class="btn btn-primary" id="llmSaveBtn">💾 保存配置</button>
+              <button class="btn" id="llmTestBtn">测试连接</button>
+              <button class="btn btn-primary" id="llmSaveBtn">保存配置</button>
             </div>
           </div>
 
           <div class="safety-box llm-log-box">
             <div class="llm-log-header">
               <div>
-                <h2>📋 LLM 调用日志</h2>
+                <h2>LLM 调用日志</h2>
                 <p class="safety-desc">用于定位解析耗时、重复请求和接口错误。日志只保存诊断信息，不保存 API Key 或 JD 原文。</p>
               </div>
               <div class="llm-log-actions">

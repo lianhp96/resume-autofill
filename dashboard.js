@@ -77,7 +77,7 @@ if (typeof document !== 'undefined') (() => {
   const SAFETY_DB_NAME = 'autumnRecruitmentTracker.safety.v1';
   const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
   const LLM_LOGS_STORAGE_KEY = 'autumnRecruitmentTracker.llmLogs.v1';
-  const APP_VERSION = '2.2.2';
+  const APP_VERSION = '1.0';
 
   // 默认示例简历种子
   const DEFAULT_RESUME = {
@@ -168,6 +168,8 @@ if (typeof document !== 'undefined') (() => {
   let currentResume = DEFAULT_RESUME;
   let editingRecordId = null;
   let pipelineFilter = 'all';
+  const RECORDS_PAGE_SIZE = 10;
+  let recordsPage = 1;
   let ocrWorker = null;
   let ocrFile = null;
   let safetyDbPromise = null;
@@ -259,7 +261,7 @@ if (typeof document !== 'undefined') (() => {
 
   // ================= 选项卡切换逻辑 =================
   const tabs = {
-    'records-tab': { kicker: 'JOB TRACKING DASHBOARD', title: '投递追踪看板', subtitle: '全面监控网申进度、面试安排与全链路阶段流转', showActions: true },
+    'records-tab': { kicker: 'APPLICATION LEDGER · 2026', title: '每一份投递，都有清晰去向。', subtitle: '状态、下一步、待办和日程围绕同一份投递记录展开，减少不必要的卡片和装饰。', showActions: true },
     'resume-tab': { kicker: 'RESUME PROFILE MANAGER', title: '我的简历资料库', subtitle: '集中维护个人信息与多段经历，实时同步至网页端快速填报', showActions: false },
     'safety-tab': { kicker: 'LOCAL DATA & PRIVACY', title: '数据安全与备份', subtitle: '100% 浏览器本地存储保护，支持备份导出与快照回滚', showActions: false },
     'llm-tab': { kicker: 'AI JOB EXTRACTION', title: 'AI 解析配置', subtitle: '配置大模型接口，用 AI 从岗位 JD 中智能提取关键字段', showActions: false }
@@ -280,6 +282,7 @@ if (typeof document !== 'undefined') (() => {
 
     const info = tabs[tabId];
     if (info) {
+      document.querySelector('.topbar')?.classList.toggle('is-records-tab', tabId === 'records-tab');
       $('#tabKicker').textContent = info.kicker;
       $('#tabTitle').textContent = info.title;
       $('#tabSubtitle').textContent = info.subtitle;
@@ -325,6 +328,49 @@ if (typeof document !== 'undefined') (() => {
     if (msg) showToast(msg);
   }
 
+  function renderRecordsPagination(totalItems, totalPages) {
+    const paginationEl = $('#recordsPagination');
+    if (!paginationEl) return;
+
+    if (totalItems === 0) {
+      paginationEl.innerHTML = '';
+      paginationEl.classList.add('hidden');
+      return;
+    }
+
+    const start = (recordsPage - 1) * RECORDS_PAGE_SIZE + 1;
+    const end = Math.min(recordsPage * RECORDS_PAGE_SIZE, totalItems);
+    const visiblePages = [];
+
+    if (totalPages <= 5) {
+      for (let page = 1; page <= totalPages; page += 1) visiblePages.push(page);
+    } else {
+      visiblePages.push(1);
+      if (recordsPage > 3) visiblePages.push('ellipsis-start');
+      for (let page = Math.max(2, recordsPage - 1); page <= Math.min(totalPages - 1, recordsPage + 1); page += 1) {
+        visiblePages.push(page);
+      }
+      if (recordsPage < totalPages - 2) visiblePages.push('ellipsis-end');
+      visiblePages.push(totalPages);
+    }
+
+    const pageButtons = visiblePages.map(item => {
+      if (typeof item !== 'number') return '<span class="pagination-ellipsis" aria-hidden="true">…</span>';
+      const current = item === recordsPage;
+      return `<button type="button" class="pagination-page${current ? ' is-current' : ''}" data-page="${item}" ${current ? 'aria-current="page"' : ''} aria-label="第 ${item} 页">${item}</button>`;
+    }).join('');
+
+    paginationEl.innerHTML = `
+      <p class="pagination-summary" aria-live="polite">显示 ${start}–${end} 条，共 ${totalItems} 条</p>
+      ${totalPages > 1 ? `<div class="pagination-controls">
+        <button type="button" class="pagination-nav" data-page="${recordsPage - 1}" ${recordsPage === 1 ? 'disabled' : ''}>上一页</button>
+        <div class="pagination-pages">${pageButtons}</div>
+        <button type="button" class="pagination-nav" data-page="${recordsPage + 1}" ${recordsPage === totalPages ? 'disabled' : ''}>下一页</button>
+      </div>` : ''}
+    `;
+    paginationEl.classList.remove('hidden');
+  }
+
   function renderRecords() {
     const searchVal = $('#searchInput').value.trim().toLowerCase();
     const stageVal = $('#stageFilter').value;
@@ -350,15 +396,18 @@ if (typeof document !== 'undefined') (() => {
       return 0;
     });
 
+    const totalPages = Math.max(1, Math.ceil(filtered.length / RECORDS_PAGE_SIZE));
+    recordsPage = Math.min(Math.max(recordsPage, 1), totalPages);
+    const pageStart = (recordsPage - 1) * RECORDS_PAGE_SIZE;
+    const pageRecords = filtered.slice(pageStart, pageStart + RECORDS_PAGE_SIZE);
+
     // 渲染统计指标
-    $('#totalCount').textContent = records.length;
-    const todayStr = new Date().toISOString().slice(0, 10);
-    $('#todayCount').textContent = records.filter(r => (r.applicationDate === todayStr || (r.updatedAt && new Date(r.updatedAt).toISOString().slice(0,10) === todayStr))).length;
-    $('#activeCount').textContent = records.filter(r => !['Offer', '简历挂', '已结束', '待投递'].includes(r.stage)).length;
-    $('#weekCount').textContent = records.filter(r => r.scheduleAt && new Date(r.scheduleAt) >= new Date()).length;
-    $('#offerCount').textContent = records.filter(r => r.stage === 'Offer').length;
     const scheduledCount = records.filter(r => isRecordUpcomingSchedule(r)).length;
     const pendingTodoCount = records.filter(r => isRecordPendingTodo(r)).length;
+    $('#totalCount').textContent = records.length;
+    $('#activeCount').textContent = records.filter(r => !['Offer', '简历挂', '已结束', '待投递'].includes(r.stage)).length;
+    $('#weekCount').textContent = scheduledCount;
+    $('#pendingTodoCount').textContent = pendingTodoCount;
     const rhythmEl = $('#sidebarRhythm');
     if (rhythmEl) {
       rhythmEl.textContent = (scheduledCount || pendingTodoCount)
@@ -390,6 +439,7 @@ if (typeof document !== 'undefined') (() => {
         const nextFilter = pill.getAttribute('data-filter');
         pipelineFilter = pipelineFilter === nextFilter ? 'all' : nextFilter;
         $('#stageFilter').value = STAGES.includes(pipelineFilter) ? pipelineFilter : '';
+        recordsPage = 1;
         renderRecords();
       });
     });
@@ -403,7 +453,7 @@ if (typeof document !== 'undefined') (() => {
       emptyEl.classList.remove('hidden');
     } else {
       emptyEl.classList.add('hidden');
-      tbody.innerHTML = filtered.map(r => {
+      tbody.innerHTML = pageRecords.map(r => {
         const url = r.applicationUrl || r.url || '';
         const hasUrl = /^https?:\/\//i.test(url);
         const todoPending = isRecordPendingTodo(r);
@@ -441,6 +491,8 @@ if (typeof document !== 'undefined') (() => {
       }).join('');
     }
 
+    renderRecordsPagination(filtered.length, totalPages);
+
     // 渲染右侧近期待办列表
     renderUpcoming();
   }
@@ -450,6 +502,8 @@ if (typeof document !== 'undefined') (() => {
     const upcoming = records
       .filter(r => isRecordVisibleUpcoming(r))
       .sort(compareUpcomingRecords);
+    const upcomingCountEl = $('#upcomingCount');
+    if (upcomingCountEl) upcomingCountEl.textContent = `${upcoming.length} 项`;
 
     if (upcoming.length === 0) {
       listEl.innerHTML = `<p style="font-size:12px;color:var(--muted);text-align:center;padding:12px 0;">近期暂无待办或日程安排</p>`;
@@ -486,12 +540,19 @@ if (typeof document !== 'undefined') (() => {
   }
 
   // 搜索与过滤事件绑定
-  $('#searchInput').addEventListener('input', renderRecords);
-  $('#stageFilter').addEventListener('change', () => {
-    pipelineFilter = $('#stageFilter').value || 'all';
+  $('#searchInput').addEventListener('input', () => {
+    recordsPage = 1;
     renderRecords();
   });
-  $('#sortSelect').addEventListener('change', renderRecords);
+  $('#stageFilter').addEventListener('change', () => {
+    pipelineFilter = $('#stageFilter').value || 'all';
+    recordsPage = 1;
+    renderRecords();
+  });
+  $('#sortSelect').addEventListener('change', () => {
+    recordsPage = 1;
+    renderRecords();
+  });
   $('#refreshDashboardBtn').addEventListener('click', async () => {
     await loadRecords();
     await updateSnapshotCount();
@@ -513,6 +574,16 @@ if (typeof document !== 'undefined') (() => {
     } else if (actionButton.classList.contains('btn-del')) {
       deleteRecord(id);
     }
+  });
+
+  $('#recordsPagination').addEventListener('click', (e) => {
+    const pageButton = e.target.closest('button[data-page]');
+    if (!pageButton || pageButton.disabled) return;
+    const nextPage = Number(pageButton.dataset.page);
+    if (!Number.isInteger(nextPage) || nextPage === recordsPage) return;
+    recordsPage = nextPage;
+    renderRecords();
+    $('#recordsPagination [aria-current="page"]')?.focus();
   });
 
   $('#upcomingList').addEventListener('click', (e) => {

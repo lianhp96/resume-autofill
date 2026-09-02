@@ -170,6 +170,10 @@ if (typeof document !== 'undefined') (() => {
   const style = document.createElement('style');
   style.textContent = `
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid rgba(20, 87, 217, 0.28);
+      outline-offset: 2px;
+    }
     
     /* 悬浮吸边胶囊按钮 */
     #aja-toggle {
@@ -179,25 +183,26 @@ if (typeof document !== 'undefined') (() => {
       z-index: 2147483646;
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 12px 8px 10px;
-      background: linear-gradient(135deg, #1457d9, #0f46b6);
-      color: #fff;
+      gap: 8px;
+      min-height: 44px;
+      padding: 5px 14px 5px 6px;
+      background: #fff;
+      color: #172033;
       font-size: 13px;
-      font-weight: 600;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      font-weight: 700;
+      border: 1px solid #cbd7e7;
       border-right: none;
-      border-radius: 20px 0 0 20px;
-      box-shadow: 0 4px 16px rgba(15, 70, 182, 0.35);
+      border-radius: 10px 0 0 10px;
+      box-shadow: 0 8px 20px rgba(23, 32, 51, 0.14);
       cursor: pointer;
       user-select: none;
       touch-action: none;
-      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     }
     #aja-toggle:hover {
-      padding-left: 14px;
-      background: linear-gradient(135deg, #2d68df, #1457d9);
-      box-shadow: 0 6px 20px rgba(15, 70, 182, 0.45);
+      background: #f7f9fd;
+      border-color: #9ebbf5;
+      box-shadow: 0 10px 24px rgba(23, 32, 51, 0.18);
     }
     #aja-toggle.hidden {
       display: none;
@@ -207,31 +212,42 @@ if (typeof document !== 'undefined') (() => {
       transition: none;
     }
     #aja-toggle.free {
-      border-radius: 20px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      box-shadow: 0 4px 16px rgba(15, 70, 182, 0.35);
+      border-radius: 10px;
+      border: 1px solid #cbd7e7;
+      box-shadow: 0 8px 20px rgba(23, 32, 51, 0.14);
     }
     #aja-toggle.snap-left {
-      border-radius: 0 20px 20px 0;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 0 10px 10px 0;
+      border: 1px solid #cbd7e7;
       border-left: none;
-      box-shadow: -4px 4px 16px rgba(15, 70, 182, 0.35);
+      box-shadow: -8px 8px 20px rgba(23, 32, 51, 0.14);
     }
+    .capsule-mark {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border-radius: 8px;
+      background: #192744;
+      color: #fff;
+      font-size: 11px;
+      letter-spacing: -0.04em;
+    }
+    .capsule-label { white-space: nowrap; }
 
     /* 侧边滑出抽屉面板 */
     #aja-drawer {
       position: fixed;
       top: 20px;
       right: 20px;
-      width: 350px;
+      width: 360px;
       max-height: min(620px, calc(100vh - 40px));
       z-index: 2147483647;      display: flex;
       flex-direction: column;
-      background: rgba(255, 255, 255, 0.98);
-      backdrop-filter: blur(16px);
-      border: 1px solid #dce2ec;
-      border-radius: 16px;
-      box-shadow: 0 12px 40px rgba(23, 32, 51, 0.18);
+      background: #ffffff;
+      border: 1px solid #cbd7e7;
+      border-radius: 12px;
+      box-shadow: 0 18px 42px rgba(23, 32, 51, 0.2);
       user-select: none;
       transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
       transform: translateX(0);
@@ -255,64 +271,73 @@ if (typeof document !== 'undefined') (() => {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      min-height: 58px;
       padding: 12px 14px;
-      background: linear-gradient(135deg, #1457d9, #0f46b6);
-      color: #fff;
-      border-radius: 15px 15px 0 0;
+      background: #fff;
+      color: #172033;
+      border-bottom: 1px solid #dce4ee;
+      border-radius: 11px 11px 0 0;
       cursor: move;
     }
     .brand-area {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 9px;
     }
     .brand-icon {
       display: grid;
       place-items: center;
-      width: 24px;
-      height: 24px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 6px;
-      font-size: 14px;
+      width: 30px;
+      height: 30px;
+      background: #192744;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 750;
     }
     .brand-title {
       font-size: 14px;
       font-weight: 700;
-      letter-spacing: 0.3px;
+      letter-spacing: -.02em;
     }
     .shortcut-badge {
       font-size: 10px;
-      background: rgba(255, 255, 255, 0.22);
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-weight: normal;
-      color: #dce8ff;
+      background: #f2f5fa;
+      border: 1px solid #dce4ee;
+      padding: 3px 6px;
+      border-radius: 5px;
+      font-weight: 600;
+      color: #63708a;
     }
     .close-btn {
-      background: none;
-      border: none;
-      color: #fff;
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      background: #fff;
+      border: 1px solid #dce4ee;
+      color: #536177;
       cursor: pointer;
       font-size: 18px;
       line-height: 1;
-      padding: 2px 6px;
-      border-radius: 4px;
-      opacity: 0.8;
-      transition: opacity 0.15s;
+      padding: 0;
+      border-radius: 7px;
+      opacity: 1;
+      transition: background-color 0.15s, border-color 0.15s;
     }
     .close-btn:hover {
-      opacity: 1;
-      background: rgba(255, 255, 255, 0.2);
+      background: #f6f8fc;
+      border-color: #9ebbf5;
     }
 
     /* 抽屉内容滚动区域 */
     .drawer-body {
       flex: 1;
       overflow-y: auto;
-      padding: 10px;
+      padding: 14px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
     }
     .drawer-body::-webkit-scrollbar {
       width: 5px;
@@ -324,9 +349,9 @@ if (typeof document !== 'undefined') (() => {
 
     /* 一键收录卡片 */
     .capture-card {
-      background: linear-gradient(145deg, #edf4ff, #e4edff);
-      border: 1px solid #b9cff8;
-      border-radius: 12px;
+      background: #f7f9fd;
+      border: 1px solid #d6e1f1;
+      border-radius: 10px;
       padding: 10px;
     }
     .capture-btn {
@@ -336,15 +361,16 @@ if (typeof document !== 'undefined') (() => {
       align-items: center;
       justify-content: center;
       gap: 6px;
+      min-height: 42px;
       padding: 8px 12px;
       background: #1457d9;
       color: #fff;
       border: none;
-      border-radius: 8px;
+      border-radius: 7px;
       font-size: 13px;
       font-weight: 650;
       cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
+      transition: background-color 0.15s ease;
     }
     .capture-ai-hint {
       position: absolute;
@@ -375,10 +401,6 @@ if (typeof document !== 'undefined') (() => {
     }
     .capture-btn:hover {
       background: #0f46b6;
-      transform: translateY(-1px);
-    }
-    .capture-btn:active {
-      transform: translateY(0);
     }
 
     /* 快速微调确认表单 */
@@ -386,7 +408,7 @@ if (typeof document !== 'undefined') (() => {
       display: none;
       margin-top: 10px;
       padding-top: 10px;
-      border-top: 1px dashed #b9cff8;
+      border-top: 1px solid #d6e1f1;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -434,44 +456,50 @@ if (typeof document !== 'undefined') (() => {
     }
     .btn-save-record {
       flex: 1;
-      padding: 6px;
-      background: #0b7a55;
+      min-height: 34px;
+      padding: 6px 10px;
+      background: #1457d9;
       color: #fff;
       border: none;
-      border-radius: 6px;
+      border-radius: 7px;
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
     }
     .btn-save-record:hover {
-      background: #086647;
+      background: #0f46b6;
     }
     .btn-cancel-capture {
+      min-height: 34px;
       padding: 6px 10px;
-      background: #f0f3f7;
-      color: #677289;
-      border: 1px solid #c7cfdb;
-      border-radius: 6px;
+      background: #fff;
+      color: #536177;
+      border: 1px solid #dce4ee;
+      border-radius: 7px;
       font-size: 12px;
       cursor: pointer;
     }
     .btn-cancel-capture:hover {
-      background: #dce2ec;
+      background: #f6f8fc;
     }
 
     /* 简历模块手风琴折叠 */
     .resume-section {
-      border: 1px solid #dce2ec;
-      border-radius: 10px;
+      border: 1px solid #dce4ee;
+      border-radius: 8px;
       background: #fff;
       overflow: hidden;
     }
     .section-header {
       display: flex;
+      width: 100%;
       align-items: center;
       justify-content: space-between;
+      min-height: 39px;
+      border: 0;
       padding: 8px 10px;
-      background: #f5f7fa;
+      background: #fff;
+      text-align: left;
       font-size: 12px;
       font-weight: 700;
       color: #38445c;
@@ -479,7 +507,7 @@ if (typeof document !== 'undefined') (() => {
       transition: background 0.15s;
     }
     .section-header:hover {
-      background: #f0f3f7;
+      background: #f7f9fd;
     }
     .section-arrow {
       font-size: 10px;
@@ -501,9 +529,9 @@ if (typeof document !== 'undefined') (() => {
 
     /* 经历行卡片 */
     .exp-row {
-      background: #f5f7fa;
-      border: 1px solid #f0f3f7;
-      border-radius: 6px;
+      background: #f7f9fd;
+      border: 1px solid #e4eaf2;
+      border-radius: 7px;
       padding: 6px;
       display: flex;
       flex-wrap: wrap;
@@ -513,9 +541,9 @@ if (typeof document !== 'undefined') (() => {
       width: 100%;
       font-size: 11px;
       font-weight: 700;
-      color: #1457d9;
+      color: #38445c;
       margin-bottom: 2px;
-      border-bottom: 1px dashed #dce2ec;
+      border-bottom: 1px solid #dce4ee;
       padding-bottom: 2px;
     }
 
@@ -525,7 +553,7 @@ if (typeof document !== 'undefined') (() => {
       align-items: center;
       padding: 4px 7px;
       background: #ffffff;
-      border: 1px solid #dce2ec;
+      border: 1px solid #dce4ee;
       border-radius: 6px;
       color: #172033;
       font-size: 11px;
@@ -535,14 +563,10 @@ if (typeof document !== 'undefined') (() => {
       text-align: left;
     }
     .field-btn:hover {
-      background: #edf4ff;
+      background: #f3f7ff;
       border-color: #b9cff8;
       color: #1457d9;
-      transform: translateY(-1px);
-    }
-    .field-btn:active {
-      background: #dce8ff;
-      transform: translateY(0);
+      transform: none;
     }
     .field-key {
       color: #677289;
@@ -567,9 +591,9 @@ if (typeof document !== 'undefined') (() => {
       align-items: center;
       gap: 8px;
       padding: 10px 12px;
-      background: #f5f7fa;
-      border-top: 1px solid #dce2ec;
-      border-radius: 0 0 15px 15px;
+      background: #fff;
+      border-top: 1px solid #dce4ee;
+      border-radius: 0 0 11px 11px;
     }
     .footer-btn {
       flex: 1;
@@ -577,18 +601,19 @@ if (typeof document !== 'undefined') (() => {
       align-items: center;
       justify-content: center;
       gap: 5px;
+      min-height: 38px;
       padding: 7px 10px;
       font-size: 12px;
       font-weight: 600;
-      border-radius: 8px;
-      border: 1px solid #c7cfdb;
+      border-radius: 7px;
+      border: 1px solid #dce4ee;
       background: #fff;
       color: #38445c;
       cursor: pointer;
       transition: all 0.15s;
     }
     .footer-btn:hover {
-      background: #edf4ff;
+      background: #f3f7ff;
       border-color: #b9cff8;
       color: #1457d9;
     }
@@ -621,26 +646,25 @@ if (typeof document !== 'undefined') (() => {
   // ================= 构建 DOM 结构 =================
   const wrapper = document.createElement('div');
   wrapper.innerHTML = `
-    <div id="aja-toggle" title="展开网申投递助手 (Ctrl+Shift+F)">
-      <span>📝</span>
-      <span>网申投递助手</span>
-    </div>
+    <button id="aja-toggle" type="button" aria-label="展开网申投递助手，快捷键 Ctrl+Shift+F" title="展开网申投递助手 (Ctrl+Shift+F)">
+      <span class="capsule-mark" aria-hidden="true">网申</span>
+      <span class="capsule-label">投递助手</span>
+    </button>
 
     <div id="aja-drawer" class="collapsed">
       <div class="drawer-header" id="aja-drag-handle">
         <div class="brand-area">
-          <div class="brand-icon">🚀</div>
+          <div class="brand-icon" aria-hidden="true">网申</div>
           <div class="brand-title">网申投递助手</div>
           <span class="shortcut-badge">Ctrl+Shift+F</span>
         </div>
-        <button class="close-btn" id="aja-close-btn" title="收起面板">✕</button>
+        <button class="close-btn" id="aja-close-btn" aria-label="收起悬浮助手" title="收起面板">✕</button>
       </div>
 
       <div class="drawer-body">
         <!-- 一键收录岗位卡片 -->
         <div class="capture-card">
           <button class="capture-btn" id="aja-scan-btn">
-            <span>📌</span>
             <span>一键收录当前岗位</span>
             <span class="capture-ai-hint">在看板「AI 解析配置」中开启并完成配置后，点击此按钮将调用 AI 提取岗位信息和 JD 内容；未配置时使用本地规则识别。</span>
           </button>
@@ -688,7 +712,7 @@ if (typeof document !== 'undefined') (() => {
               <textarea id="cap-requirements" rows="3" placeholder="任职资格、技能与学历要求（可由 AI 自动解析）"></textarea>
             </div>
             <div class="form-actions">
-              <button class="btn-save-record" id="cap-save-btn">✓ 确认存入看板</button>
+              <button class="btn-save-record" id="cap-save-btn">确认存入看板</button>
               <button class="btn-cancel-capture" id="cap-cancel-btn">收起</button>
             </div>
           </div>
@@ -701,11 +725,9 @@ if (typeof document !== 'undefined') (() => {
       <!-- 底部中枢入口 -->
       <div class="drawer-footer">
         <button class="footer-btn" id="aja-open-records-btn">
-          <span>📊</span>
           <span>投递看板</span>
         </button>
         <button class="footer-btn" id="aja-open-resume-btn">
-          <span>⚙️</span>
           <span>简历配置</span>
         </button>
       </div>
@@ -752,10 +774,10 @@ if (typeof document !== 'undefined') (() => {
 
       html += `
         <div class="resume-section ${collapsedClass}">
-          <div class="section-header">
+          <button type="button" class="section-header" aria-expanded="${isDefaultOpen}">
             <span>${sectionName}</span>
             <span class="section-arrow">▼</span>
-          </div>
+          </button>
           <div class="section-content">
       `;
 
@@ -764,7 +786,7 @@ if (typeof document !== 'undefined') (() => {
         sectionData.forEach(item => {
           html += `<div class="exp-row">`;
           if (item._rowName) {
-            html += `<div class="exp-row-title">👉 ${item._rowName}</div>`;
+            html += `<div class="exp-row-title">${item._rowName}</div>`;
           }
           for (const [k, v] of Object.entries(item)) {
             if (k.startsWith('_') || v === undefined || v === null || v === '') continue;
@@ -991,6 +1013,7 @@ if (typeof document !== 'undefined') (() => {
     if (headerEl) {
       const sec = headerEl.closest('.resume-section');
       sec.classList.toggle('collapsed');
+      headerEl.setAttribute('aria-expanded', String(!sec.classList.contains('collapsed')));
     }
   });
 
@@ -1086,7 +1109,7 @@ if (typeof document !== 'undefined') (() => {
         const cfg = res[LLM_STORAGE_KEY] || {};
         if (cfg.enabled && cfg.baseUrl && cfg.apiKey && cfg.model) {
           scanBtn.disabled = true;
-          scanBtn.innerHTML = '<span>🤖</span><span>AI 识别中...</span>';
+          scanBtn.innerHTML = '<span>AI 识别中...</span>';
           const textStartedAt = performance.now();
           const pageText = collectJdText();
           clientTimings.textCollectMs = Math.round(performance.now() - textStartedAt);

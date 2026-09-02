@@ -6,6 +6,7 @@ const {
   buildFormFingerprint,
   buildAiMappingRequest,
   collectPageFields,
+  MIN_AI_MAPPING_CONFIDENCE,
   planAutofill,
   validateAiMappingPlan
 } = require('../autofill-planner.js');
@@ -507,6 +508,37 @@ test('validateAiMappingPlan accepts only known, unique, compatible mappings', ()
       unmappedPageFieldIds: ['page-school']
     }
   }), { ok: false, error: 'unknown_field_id' });
+});
+
+test('validateAiMappingPlan accepts its confidence threshold and rejects lower AI mappings', () => {
+  const pageFields = [{
+    id: 'page-school', label: '毕业院校', control: 'text', required: true,
+    section: '教育经历', repeatIndex: 0, options: []
+  }];
+  const profileSchema = [{
+    id: 'profile-school', path: '教育经历[0].学校', label: '学校', kind: 'text',
+    section: '教育经历', repeatIndex: 0, autofillClass: 'standard'
+  }];
+
+  assert.deepEqual(validateAiMappingPlan({
+    pageFields,
+    profileSchema,
+    candidate: {
+      version: 1,
+      mappings: [{ pageFieldId: 'page-school', profileFieldId: 'profile-school', confidence: MIN_AI_MAPPING_CONFIDENCE - 0.01, reasonCode: 'semantic_label_match' }],
+      unmappedPageFieldIds: []
+    }
+  }), { ok: false, error: 'low_confidence_mapping' });
+
+  assert.equal(validateAiMappingPlan({
+    pageFields,
+    profileSchema,
+    candidate: {
+      version: 1,
+      mappings: [{ pageFieldId: 'page-school', profileFieldId: 'profile-school', confidence: MIN_AI_MAPPING_CONFIDENCE, reasonCode: 'semantic_label_match' }],
+      unmappedPageFieldIds: []
+    }
+  }).ok, true);
 });
 
 test('AI plans reject extra properties and mappings that cross repeated scopes', () => {

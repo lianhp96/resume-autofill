@@ -10,6 +10,7 @@
     confirmBeforeAutofillPattern: /性别|出生|籍贯|户籍|住址|地址|\b(?:gender|birth|residence|household)\b/i
   });
   const MAX_AI_MAPPING_ENTRIES = 128;
+  const MIN_AI_MAPPING_CONFIDENCE = 0.85;
 
   const FIELD_ALIASES = {
     '姓名': ['姓名', '中文名', '真实姓名', '申请人姓名'],
@@ -366,6 +367,9 @@
       if (typeof mapping.confidence !== 'number' || mapping.confidence < 0 || mapping.confidence > 1) {
         return { ok: false, error: 'invalid_confidence' };
       }
+      if (mapping.confidence < MIN_AI_MAPPING_CONFIDENCE) {
+        return { ok: false, error: 'low_confidence_mapping' };
+      }
       const reasonCode = String(mapping.reasonCode || 'semantic_label_match');
       if (!/^[a-z_]{3,64}$/.test(reasonCode)) return { ok: false, error: 'invalid_reason_code' };
       mappings.push({
@@ -456,6 +460,7 @@
 
   return {
     DEFAULT_AUTOFILL_POLICY,
+    MIN_AI_MAPPING_CONFIDENCE,
     buildAiMappingRequest,
     buildProfileSchema,
     buildFormFingerprint,

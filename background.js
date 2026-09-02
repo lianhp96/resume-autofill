@@ -9,6 +9,7 @@ const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
 const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
 const LLM_LOGS_STORAGE_KEY = 'autumnRecruitmentTracker.llmLogs.v1';
 const AUTOFILL_PLANNER = self.AutofillPlanner;
+const MIN_AUTOFILL_MAPPING_CONFIDENCE = AUTOFILL_PLANNER?.MIN_AI_MAPPING_CONFIDENCE || 0.85;
 const MAX_AUTOFILL_PAGE_FIELDS = 80;
 const MAX_AUTOFILL_PROFILE_FIELDS = 120;
 const MIN_AUTOFILL_REQUEST_INTERVAL_MS = 1500;
@@ -151,14 +152,14 @@ const AUTOFILL_MAPPING_SYSTEM_PROMPT = `你是网申表单字段映射助手。�
     {
       "pageFieldId": "输入中已有的页面字段 ID",
       "profileFieldId": "输入中已有的资料字段 ID",
-      "confidence": 0.0,
+      "confidence": ${MIN_AUTOFILL_MAPPING_CONFIDENCE},
       "reasonCode": "semantic_label_match"
     }
   ],
   "unmappedPageFieldIds": ["未映射的页面字段 ID"]
 }
 
-约束：只使用输入中已有的 ID；不能重复使用页面字段或资料字段；不确定时不要映射；unmappedPageFieldIds 必须恰好列出所有没有出现在 mappings 中的页面字段 ID；confidence 必须在 0 到 1 之间；reasonCode 只用小写英文和下划线。`;
+约束：只使用输入中已有的 ID；不能重复使用页面字段或资料字段；只有 confidence 不低于 ${MIN_AUTOFILL_MAPPING_CONFIDENCE} 且语义明确时才映射，不确定或低置信度字段一律不要映射；unmappedPageFieldIds 必须恰好列出所有没有出现在 mappings 中的页面字段 ID；confidence 必须在 ${MIN_AUTOFILL_MAPPING_CONFIDENCE} 到 1 之间；reasonCode 只用小写英文和下划线。`;
 
 function normalizeBaseUrl(baseUrl) {
   return (baseUrl || '').trim().replace(/\/+$/, '');

@@ -4,8 +4,10 @@ const assert = require('node:assert/strict');
 const {
   buildProfileSchema,
   buildFormFingerprint,
+  buildAiMappingRequest,
   collectPageFields,
-  planAutofill
+  planAutofill,
+  validateAiMappingPlan
 } = require('../autofill-planner.js');
 
 test('buildProfileSchema exposes field semantics but never profile values', () => {
@@ -392,4 +394,102 @@ test('collectPageFields uses a fieldset legend and drops labels containing a per
       section: '教育经历', repeatIndex: null, hasExistingValue: false, options: []
     }
   ]);
+});
+
+test('buildAiMappingRequest contains only safe field descriptors, never source or page values', () => {
+  const request = buildAiMappingRequest({
+    fingerprint: 'form:v1:education',
+    pageFields: [
+      {
+        id: 'page-school', label: '毕业院校', control: 'text', required: true,
+        section: '教育经历', repeatIndex: 0, options: [], value: '页面已有的隐私值'
+      },
+      {
+        id: 'page-phone', label: '手机号码', control: 'tel', required: true,
+        section: '基本信息', repeatIndex: null, options: [], value: '13800138000'
+      }
+    ],
+    profileSchema: [
+      {
+        id: 'profile-school', path: '教育经历[0].学校', label: '学校', kind: 'text',
+        section: '教育经历', repeatIndex: 0, autofillClass: 'standard', value: '浙江大学'
+      },
+      {
+        id: 'profile-phone', path: '优先信息.手机', label: '手机', kind: 'text',
+        section: '优先信息', repeatIndex: null, autofillClass: 'never', value: '13800138000'
+      }
+    ]
+  });
+
+  assert.deepEqual(request, {
+    version: 1,
+    fingerprint: 'form:v1:education',
+    pageFields: [{
+      id: 'page-school', label: '毕业院校', control: 'text', required: true,
+      section: '教育经历', repeatIndex: 0, options: []
+    }],
+    profileFields: [{
+      id: 'profile-school', path: '教育经历[0].学校', label: '学校', kind: 'text',
+      section: '教育经历', repeatIndex: 0, autofillClass: 'standard'
+    }]
+  });
+  const serialized = JSON.stringify(request);
+  assert.equal(serialized.includes('浙江大学'), false);
+  assert.equal(serialized.includes('13800138000'), false);
+  assert.equal(serialized.includes('页面已有的隐私值'), false);
+});
+
+test('validateAiMappingPlan accepts only known, unique, compatible mappings', () => {
+  const pageFields = [{
+    id: 'page-school', label: '毕业院校', control: 'text', required: true,
+    section: '教育经历', repeatIndex: 0, options: []
+  }];
+  const profileSchema = [{
+    id: 'profile-school', path: '教育经历[0].学校', label: '学校', kind: 'text',
+    section: '教育经历', repeatIndex: 0, autofillClass: 'standard'
+  }];
+
+  assert.deepEqual(validateAiMappingPlan({
+    fingerprint: 'form:v1:education', pageFields, profileSchema,
+    candidate: {
+      version: 1,
+      mappings: [{
+        pageFieldId: 'page-school', profileFieldId: 'profile-school',
+        confidence: 0.91, reasonCode: 'semantic_label_match'
+      }]
+    }
+  }), {
+    ok: true,
+    plan: {
+      version: 1,
+      fingerprint: 'form:v1:education',
+      mappings: [{
+        pageFieldId: 'page-school', profileFieldId: 'profile-school',
+        confidence: 0.91, reasonCode: 'semantic_label_match', source: 'ai'
+      }],
+      unmappedPageFieldIds: []
+    }
+  });
+
+  assert.deepEqual(validateAiMappingPlan({
+    fingerprint: 'form:v1:education', pageFields, profileSchema,
+    candidate: {
+      version: 1,
+      mappings: [
+        { pageFieldId: 'page-school', profileFieldId: 'profile-school', confidence: 0.9, reasonCode: 'semantic_label_match' },
+        { pageFieldId: 'page-school', profileFieldId: 'profile-school', confidence: 0.9, reasonCode: 'semantic_label_match' }
+      ]
+    }
+  }), { ok: false, error: 'duplicate_page_field' });
+
+  assert.deepEqual(validateAiMappingPlan({
+    fingerprint: 'form:v1:education', pageFields, profileSchema,
+    candidate: {
+      version: 1,
+      mappings: [{
+        pageFieldId: 'page-unknown', profileFieldId: 'profile-school',
+        confidence: 0.9, reasonCode: 'semantic_label_match'
+      }]
+    }
+  }), { ok: false, error: 'unknown_field_id' });
 });

@@ -265,6 +265,45 @@
     return `form:v1:${stableHash(`${origin}${pathname}\n${fieldSignature}`)}`;
   }
 
+  function buildAiMappingRequest({ pageFields, profileSchema, policy = DEFAULT_AUTOFILL_POLICY, fingerprint = '' } = {}) {
+    const safePageFields = (Array.isArray(pageFields) ? pageFields : [])
+      .map(field => {
+        const label = sanitizeDescriptorText(field.label);
+        if (!label || classifyField(label, policy) !== 'standard') return null;
+        return {
+          id: String(field.id || ''),
+          label,
+          control: String(field.control || ''),
+          required: Boolean(field.required),
+          section: sanitizeDescriptorText(field.section),
+          repeatIndex: Number.isInteger(field.repeatIndex) ? field.repeatIndex : null,
+          options: (Array.isArray(field.options) ? field.options : []).map(sanitizeDescriptorText).filter(Boolean).slice(0, 30)
+        };
+      })
+      .filter(field => field && field.id);
+    const safeProfileFields = (Array.isArray(profileSchema) ? profileSchema : [])
+      .map(field => {
+        const label = sanitizeDescriptorText(field.label);
+        if (!label || field.autofillClass !== 'standard' || classifyField(label, policy) !== 'standard') return null;
+        return {
+          id: String(field.id || ''),
+          path: String(field.path || ''),
+          label,
+          kind: String(field.kind || ''),
+          section: sanitizeDescriptorText(field.section),
+          repeatIndex: Number.isInteger(field.repeatIndex) ? field.repeatIndex : null,
+          autofillClass: 'standard'
+        };
+      })
+      .filter(field => field && field.id && field.path);
+    return {
+      version: 1,
+      fingerprint: String(fingerprint || ''),
+      pageFields: safePageFields,
+      profileFields: safeProfileFields
+    };
+  }
+
   function normalizePathTemplate(pathname) {
     return String(pathname || '/').split('/').map(segment => (
       /^\d+$/.test(segment)
@@ -281,6 +320,54 @@
     if (profileField.kind === 'month') return control === 'month';
     if (profileField.kind === 'date') return control === 'date';
     return control === 'text' || control === 'textarea' || control === 'email' || control === 'tel';
+  }
+
+  function validateAiMappingPlan({ candidate, pageFields, profileSchema, policy = DEFAULT_AUTOFILL_POLICY, fingerprint = '' } = {}) {
+    if (!candidate || typeof candidate !== 'object' || candidate.version !== 1 || !Array.isArray(candidate.mappings)) {
+      return { ok: false, error: 'invalid_mapping_plan' };
+    }
+    const pageById = new Map((Array.isArray(pageFields) ? pageFields : []).map(field => [field.id, field]));
+    const profileById = new Map((Array.isArray(profileSchema) ? profileSchema : []).map(field => [field.id, field]));
+    const usedPageIds = new Set();
+    const usedProfileIds = new Set();
+    const mappings = [];
+
+    for (const mapping of candidate.mappings) {
+      if (!mapping || typeof mapping !== 'object') return { ok: false, error: 'invalid_mapping' };
+      const pageField = pageById.get(mapping.pageFieldId);
+      const profileField = profileById.get(mapping.profileFieldId);
+      if (!pageField || !profileField) return { ok: false, error: 'unknown_field_id' };
+      if (usedPageIds.has(pageField.id)) return { ok: false, error: 'duplicate_page_field' };
+      if (usedProfileIds.has(profileField.id)) return { ok: false, error: 'duplicate_profile_field' };
+      if (classifyField(pageField.label, policy) !== 'standard' || profileField.autofillClass !== 'standard' || classifyField(profileField.label, policy) !== 'standard') {
+        return { ok: false, error: 'forbidden_field' };
+      }
+      if (!isCompatible(pageField, profileField)) return { ok: false, error: 'incompatible_field_type' };
+      if (typeof mapping.confidence !== 'number' || mapping.confidence < 0 || mapping.confidence > 1) {
+        return { ok: false, error: 'invalid_confidence' };
+      }
+      const reasonCode = String(mapping.reasonCode || 'semantic_label_match');
+      if (!/^[a-z_]{3,64}$/.test(reasonCode)) return { ok: false, error: 'invalid_reason_code' };
+      mappings.push({
+        pageFieldId: pageField.id,
+        profileFieldId: profileField.id,
+        confidence: mapping.confidence,
+        reasonCode,
+        source: 'ai'
+      });
+      usedPageIds.add(pageField.id);
+      usedProfileIds.add(profileField.id);
+    }
+
+    return {
+      ok: true,
+      plan: {
+        version: 1,
+        fingerprint: String(fingerprint || ''),
+        mappings,
+        unmappedPageFieldIds: Array.from(pageById.keys()).filter(id => !usedPageIds.has(id))
+      }
+    };
   }
 
   function inSameScope(pageField, profileField) {
@@ -339,9 +426,11 @@
 
   return {
     DEFAULT_AUTOFILL_POLICY,
+    buildAiMappingRequest,
     buildProfileSchema,
     buildFormFingerprint,
     collectPageFields,
-    planAutofill
+    planAutofill,
+    validateAiMappingPlan
   };
 });

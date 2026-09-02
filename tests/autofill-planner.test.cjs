@@ -1,0 +1,177 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const {
+  buildProfileSchema,
+  collectPageFields,
+  planAutofill
+} = require('../autofill-planner.js');
+
+test('buildProfileSchema exposes field semantics but never profile values', () => {
+  const schema = buildProfileSchema({
+    '基本信息': {
+      '姓名': '李明',
+      '手机': '13800138000',
+      '身份证': '110101199801011234'
+    },
+    '教育经历': [{
+      '_rowName': '硕士',
+      '学校': '浙江大学',
+      '结束时间': '2026-06'
+    }]
+  });
+
+  assert.deepEqual(schema, [
+    {
+      id: 'profile:基本信息.姓名',
+      path: '基本信息.姓名',
+      label: '姓名',
+      kind: 'text',
+      section: '基本信息',
+      repeatIndex: null,
+      autofillClass: 'standard'
+    },
+    {
+      id: 'profile:教育经历[0].学校',
+      path: '教育经历[0].学校',
+      label: '学校',
+      kind: 'text',
+      section: '教育经历',
+      repeatIndex: 0,
+      autofillClass: 'standard'
+    },
+    {
+      id: 'profile:教育经历[0].结束时间',
+      path: '教育经历[0].结束时间',
+      label: '结束时间',
+      kind: 'month',
+      section: '教育经历',
+      repeatIndex: 0,
+      autofillClass: 'standard'
+    }
+  ]);
+  assert.equal(JSON.stringify(schema).includes('李明'), false);
+  assert.equal(JSON.stringify(schema).includes('13800138000'), false);
+  assert.equal(JSON.stringify(schema).includes('110101199801011234'), false);
+});
+
+test('planAutofill produces a deterministic, section-aware mapping plan', () => {
+  const profileSchema = buildProfileSchema({
+    '基本信息': { '姓名': '李明' },
+    '教育经历': [
+      { '学校': '浙江大学', '结束时间': '2026-06' },
+      { '学校': '华东理工大学', '结束时间': '2023-06' }
+    ]
+  });
+
+  const plan = planAutofill({
+    fingerprint: 'example.test:education-v1',
+    profileSchema,
+    pageFields: [
+      { id: 'p-name', label: '姓名', control: 'text', section: '基本信息', repeatIndex: null },
+      { id: 'p-school-1', label: '毕业院校', control: 'text', section: '教育经历', repeatIndex: 1 },
+      { id: 'p-graduation-1', label: '毕业时间', control: 'month', section: '教育经历', repeatIndex: 1 }
+    ]
+  });
+
+  assert.deepEqual(plan, {
+    version: 1,
+    fingerprint: 'example.test:education-v1',
+    mappings: [
+      {
+        pageFieldId: 'p-name',
+        profileFieldId: 'profile:基本信息.姓名',
+        confidence: 1,
+        reasonCode: 'exact_label_match',
+        source: 'local-rule'
+      },
+      {
+        pageFieldId: 'p-school-1',
+        profileFieldId: 'profile:教育经历[1].学校',
+        confidence: 0.98,
+        reasonCode: 'section_alias_match',
+        source: 'local-rule'
+      },
+      {
+        pageFieldId: 'p-graduation-1',
+        profileFieldId: 'profile:教育经历[1].结束时间',
+        confidence: 0.98,
+        reasonCode: 'section_alias_match',
+        source: 'local-rule'
+      }
+    ],
+    unmappedPageFieldIds: []
+  });
+});
+
+test('planAutofill skips ambiguous and incompatible fields rather than guessing', () => {
+  const profileSchema = buildProfileSchema({
+    '基本信息': {
+      '现居地': '北京市海淀区',
+      '户籍地': '山东省济南市',
+      '性别': '男'
+    }
+  });
+
+  const plan = planAutofill({
+    fingerprint: 'example.test:ambiguous-v1',
+    profileSchema,
+    pageFields: [
+      { id: 'p-address', label: '地址', control: 'text', section: '基本信息', repeatIndex: null },
+      { id: 'p-birth-month', label: '出生月份', control: 'month', section: '基本信息', repeatIndex: null },
+      { id: 'p-gender', label: '性别', control: 'select', section: '基本信息', repeatIndex: null }
+    ]
+  });
+
+  assert.deepEqual(plan.mappings, []);
+  assert.deepEqual(plan.unmappedPageFieldIds, ['p-address', 'p-birth-month', 'p-gender']);
+});
+
+test('collectPageFields returns a value-free description for empty visible controls only', () => {
+  const visibleField = {
+    tagName: 'INPUT',
+    type: 'text',
+    id: 'school',
+    name: 'school',
+    value: '',
+    required: true,
+    disabled: false,
+    readOnly: false,
+    offsetParent: {},
+    getAttribute(name) {
+      return { id: 'school', name: 'school', placeholder: '请输入毕业院校' }[name] || null;
+    },
+    closest() { return null; }
+  };
+  const populatedField = {
+    ...visibleField,
+    id: 'email',
+    name: 'email',
+    value: 'private@example.com',
+    getAttribute(name) {
+      return { id: 'email', name: 'email', placeholder: '邮箱' }[name] || null;
+    }
+  };
+  const hiddenField = { ...visibleField, type: 'hidden' };
+  const doc = {
+    querySelectorAll() { return [visibleField, populatedField, hiddenField]; },
+    querySelector(selector) {
+      if (selector === 'label[for="school"]') return { textContent: '毕业院校' };
+      if (selector === 'label[for="email"]') return { textContent: '邮箱' };
+      return null;
+    }
+  };
+
+  assert.deepEqual(collectPageFields(doc), [
+    {
+      id: 'page:0',
+      label: '毕业院校',
+      control: 'text',
+      required: true,
+      section: '',
+      repeatIndex: null,
+      hasExistingValue: false,
+      options: []
+    }
+  ]);
+});

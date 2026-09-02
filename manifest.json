@@ -24,7 +24,7 @@
   "content_scripts": [
     {
       "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"],
+      "js": ["autofill-planner.js", "content.js"],
       "run_at": "document_end"
     }
   ],

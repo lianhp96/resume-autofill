@@ -214,12 +214,19 @@ async function callLLM(config, messages, { timeoutMs = 0 } = {}) {
   };
   const attempts = [];
   const startedAt = performance.now();
+  const deadlineAt = timeoutMs > 0 ? startedAt + timeoutMs : 0;
+  const remainingTimeout = () => deadlineAt ? Math.max(0, Math.ceil(deadlineAt - performance.now())) : 0;
   try {
-    const content = await requestLLMAttempt(url, headers, { ...baseBody, response_format: { type: 'json_object' } }, attempts, 1, true, timeoutMs);
+    const content = await requestLLMAttempt(url, headers, { ...baseBody, response_format: { type: 'json_object' } }, attempts, 1, true, remainingTimeout());
     return { content, attempts, apiMs: Math.round(performance.now() - startedAt), thinkingDisabled };
-  } catch (_) {
+  } catch (firstError) {
+    if (firstError?.name === 'AbortError' || (deadlineAt && remainingTimeout() <= 0)) {
+      firstError.llmAttempts = attempts;
+      firstError.llmApiMs = Math.round(performance.now() - startedAt);
+      throw firstError;
+    }
     try {
-      const content = await requestLLMAttempt(url, headers, baseBody, attempts, 2, false, timeoutMs);
+      const content = await requestLLMAttempt(url, headers, baseBody, attempts, 2, false, remainingTimeout());
       return { content, attempts, apiMs: Math.round(performance.now() - startedAt), thinkingDisabled };
     } catch (err) {
       err.llmAttempts = attempts;
@@ -348,7 +355,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           ...baseLog,
           ok: false,
           status: 'request_error',
-          error: String(err.message || err).slice(0, 120),
+          error: err?.name === 'AbortError' ? '请求超时' : 'LLM 请求失败',
           apiMs: err.llmApiMs || 0,
           totalMs: Math.round(performance.now() - startedAt),
           attempts: err.llmAttempts || []
@@ -370,10 +377,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         profileSchema: request.profileSchema
       });
       const unresolvedPageFieldIds = new Set(localPlan.unmappedPageFieldIds);
+      const usedLocalProfileIds = new Set(localPlan.mappings.map(mapping => mapping.profileFieldId));
       const mappingRequest = AUTOFILL_PLANNER.buildAiMappingRequest({
         pageFields: (Array.isArray(request.pageFields) ? request.pageFields : [])
           .filter(field => unresolvedPageFieldIds.has(field.id)),
-        profileSchema: request.profileSchema
+        profileSchema: (Array.isArray(request.profileSchema) ? request.profileSchema : [])
+          .filter(field => !usedLocalProfileIds.has(field.id))
       });
       const baseLog = {
         kind: 'autofill_plan',
@@ -382,28 +391,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         profileFieldCount: mappingRequest.profileFields.length
       };
       let config = {};
+      const returnLocalPlan = async (status, error, message) => {
+        await appendLlmLog({
+          ...baseLog,
+          ok: true,
+          status,
+          error,
+          totalMs: Math.round(performance.now() - startedAt)
+        });
+        return sendResponse({ ok: true, plan: localPlan, degraded: true, message });
+      };
       try {
         if (mappingRequest.pageFields.length === 0 || mappingRequest.profileFields.length === 0) {
-          await appendLlmLog({ ...baseLog, ok: true, status: 'local_only', mappingCount: localPlan.mappings.length, totalMs: Math.round(performance.now() - startedAt), attempts: [] });
+          await appendLlmLog({ ...baseLog, ok: true, status: 'local_only', totalMs: Math.round(performance.now() - startedAt) });
           return sendResponse({ ok: true, plan: localPlan });
         }
         if (mappingRequest.pageFields.length > MAX_AUTOFILL_PAGE_FIELDS || mappingRequest.profileFields.length > MAX_AUTOFILL_PROFILE_FIELDS) {
-          await appendLlmLog({ ...baseLog, ok: false, status: 'skipped', error: '安全字段数量超过上限', totalMs: Math.round(performance.now() - startedAt), attempts: [] });
-          return sendResponse({ ok: false, message: '自动填写字段数量超过安全上限' });
+          return returnLocalPlan('skipped', '安全字段数量超过上限', '自动填写字段数量超过安全上限，已保留本地匹配结果');
         }
         config = await llmGetConfig();
-        Object.assign(baseLog, { model: config.model || '', endpoint: safeEndpoint(config.baseUrl) });
+        Object.assign(baseLog, { model: config.model || '' });
         if (!config.enabled) {
-          await appendLlmLog({ ...baseLog, ok: false, status: 'skipped', error: '未启用 AI 解析', totalMs: Math.round(performance.now() - startedAt), attempts: [] });
-          return sendResponse({ ok: false, message: '未启用 AI 解析' });
+          return returnLocalPlan('skipped', '未启用 AI 解析', '未启用 AI 映射，已保留本地匹配结果');
         }
         if (!config.baseUrl || !config.apiKey || !config.model) {
-          await appendLlmLog({ ...baseLog, ok: false, status: 'skipped', error: 'LLM 配置不完整', totalMs: Math.round(performance.now() - startedAt), attempts: [] });
-          return sendResponse({ ok: false, message: 'LLM 配置不完整' });
+          return returnLocalPlan('skipped', 'LLM 配置不完整', 'LLM 配置不完整，已保留本地匹配结果');
         }
         if (Date.now() - lastAutofillPlanAt < MIN_AUTOFILL_REQUEST_INTERVAL_MS) {
-          await appendLlmLog({ ...baseLog, ok: false, status: 'rate_limited', error: '请求过于频繁', totalMs: Math.round(performance.now() - startedAt), attempts: [] });
-          return sendResponse({ ok: false, message: '请稍后再试' });
+          return returnLocalPlan('rate_limited', '请求过于频繁', '请求过于频繁，已保留本地匹配结果');
         }
         lastAutofillPlanAt = Date.now();
         const result = await callLLM(config, [
@@ -412,12 +427,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         ], { timeoutMs: AUTOFILL_LLM_TIMEOUT_MS });
         const parsed = parseStrictJsonObject(result.content);
         if (!parsed) {
-          await appendLlmLog({
-            ...baseLog, ok: false, status: 'parse_error', error: 'LLM 返回不符合 JSON 契约',
-            outputChars: result.content.length, apiMs: result.apiMs, thinkingDisabled: result.thinkingDisabled,
-            totalMs: Math.round(performance.now() - startedAt), attempts: result.attempts
-          });
-          return sendResponse({ ok: false, message: 'LLM 返回不符合 JSON 契约' });
+          return returnLocalPlan('parse_error', 'LLM 返回不符合 JSON 契约', 'AI 返回无效，已保留本地匹配结果');
         }
         const validation = AUTOFILL_PLANNER.validateAiMappingPlan({
           candidate: parsed,
@@ -425,19 +435,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           pageFields: mappingRequest.pageFields,
           profileSchema: mappingRequest.profileFields
         });
+        if (!validation.ok) return returnLocalPlan('validation_error', validation.error, `AI 映射未通过校验: ${validation.error}`);
         await appendLlmLog({
           ...baseLog,
-          ok: validation.ok,
-          status: validation.ok ? 'success' : 'validation_error',
-          error: validation.ok ? '' : validation.error,
-          mappingCount: validation.ok ? validation.plan.mappings.length : 0,
-          outputChars: result.content.length,
+          ok: true,
+          status: 'success',
+          error: '',
           apiMs: result.apiMs,
-          thinkingDisabled: result.thinkingDisabled,
-          totalMs: Math.round(performance.now() - startedAt),
-          attempts: result.attempts
+          totalMs: Math.round(performance.now() - startedAt)
         });
-        if (!validation.ok) return sendResponse({ ok: false, message: `AI 映射未通过校验: ${validation.error}` });
         const aiPlan = restoreAiPlanIds(validation.plan, mappingRequest);
         const aiEligiblePageIds = new Set(mappingRequest.pageFields.map(field => field.localId));
         sendResponse({
@@ -459,10 +465,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           status: 'request_error',
           error: String(err.message || err).slice(0, 120),
           apiMs: err.llmApiMs || 0,
-          totalMs: Math.round(performance.now() - startedAt),
-          attempts: err.llmAttempts || []
+          totalMs: Math.round(performance.now() - startedAt)
         });
-        sendResponse({ ok: false, message: err.message || String(err) });
+        sendResponse({ ok: true, plan: localPlan, degraded: true, message: 'AI 映射请求失败，已保留本地匹配结果' });
       }
     })();
     return true;

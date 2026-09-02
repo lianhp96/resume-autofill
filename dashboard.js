@@ -74,6 +74,7 @@ if (typeof document !== 'undefined') (() => {
   const RESUME_SECTION_ORDER = ['优先信息', '基本信息', '教育经历', '实习经历', '项目经历', '竞赛与技能'];
   const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
   const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
+  const RESUME_PRIORITY_ORDER_STORAGE_KEY = 'autumnRecruitmentTracker.resume.priorityOrder.v1';
   const SAFETY_DB_NAME = 'autumnRecruitmentTracker.safety.v1';
   const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
   const LLM_LOGS_STORAGE_KEY = 'autumnRecruitmentTracker.llmLogs.v1';
@@ -171,6 +172,11 @@ if (typeof document !== 'undefined') (() => {
   const RECORDS_PAGE_SIZE = 10;
   let recordsPage = 1;
   let safetyDbPromise = null;
+  let draggedPriorityKvRow = null;
+  let draggedPriorityKvHandle = null;
+  let draggedPriorityPointerId = null;
+  let priorityPointerMoved = false;
+  let priorityFieldOrder = [];
 
   // ================= 辅助函数 =================
   function $(selector) { return document.querySelector(selector); }
@@ -724,14 +730,32 @@ if (typeof document !== 'undefined') (() => {
 
   // ================= TAB 2: 简历资料库管理核心逻辑 =================
   async function loadResume() {
-    const saved = await storageGet(RESUME_STORAGE_KEY);
+    const [saved, savedPriorityOrder] = await Promise.all([
+      storageGet(RESUME_STORAGE_KEY),
+      storageGet(RESUME_PRIORITY_ORDER_STORAGE_KEY)
+    ]);
     if (saved && typeof saved === 'object') {
       currentResume = saved;
     } else {
       currentResume = DEFAULT_RESUME;
       await storageSet(RESUME_STORAGE_KEY, currentResume);
     }
+    priorityFieldOrder = Array.isArray(savedPriorityOrder)
+      ? savedPriorityOrder
+      : Object.keys(currentResume['优先信息'] || {});
     renderResumeEditor();
+  }
+
+  function getPriorityFieldEntries(data) {
+    const entries = Object.entries(data);
+    if (!priorityFieldOrder.length) return entries;
+    const entryMap = new Map(entries);
+    const orderedKeys = priorityFieldOrder.filter(key => entryMap.has(key));
+    const orderedKeySet = new Set(orderedKeys);
+    return [
+      ...orderedKeys.map(key => [key, entryMap.get(key)]),
+      ...entries.filter(([key]) => !orderedKeySet.has(key))
+    ];
   }
 
   function renderResumeEditor() {
@@ -740,8 +764,11 @@ if (typeof document !== 'undefined') (() => {
       const container = $(`#kv-${sec}`);
       if (!container) return;
       const data = currentResume[sec] || {};
-      container.innerHTML = Object.entries(data).map(([k, v]) => `
+      const isPrioritySection = sec === '优先信息';
+      const entries = isPrioritySection ? getPriorityFieldEntries(data) : Object.entries(data);
+      container.innerHTML = entries.map(([k, v]) => `
         <div class="kv-row" data-section="${sec}">
+          ${isPrioritySection ? '<button type="button" class="kv-drag-handle" title="拖动调整顺序" aria-label="拖动调整字段顺序">::</button>' : ''}
           <input type="text" class="kv-key" value="${escapeHtml(k)}" placeholder="字段名称">
           <input type="text" class="kv-val" value="${escapeHtml(v)}" placeholder="内容值">
           <button type="button" class="kv-del-btn" data-action="del-kv" title="删除字段">✕</button>
@@ -793,6 +820,7 @@ if (typeof document !== 'undefined') (() => {
     row.className = 'kv-row';
     row.setAttribute('data-section', sec);
     row.innerHTML = `
+      ${sec === '优先信息' ? '<button type="button" class="kv-drag-handle" title="拖动调整顺序" aria-label="拖动调整字段顺序">::</button>' : ''}
       <input type="text" class="kv-key" placeholder="新字段名称">
       <input type="text" class="kv-val" placeholder="内容值">
       <button type="button" class="kv-del-btn" data-action="del-kv" title="删除字段">✕</button>
@@ -869,6 +897,83 @@ if (typeof document !== 'undefined') (() => {
   // 挂载到 window 供多场景访问
   window.addKvField = addKvField;
   window.addExperienceRow = addExperienceRow;
+
+  // 优先信息支持鼠标拖拽和键盘方向键排序，排序结果随“保存并实时同步”一起保存。
+  function movePriorityKvRow(row, targetRow, insertBefore) {
+    if (!row || !targetRow || row === targetRow || row.parentElement !== targetRow.parentElement) return;
+    const container = targetRow.parentElement;
+    const referenceRow = insertBefore ? targetRow : targetRow.nextElementSibling;
+    if (referenceRow === row) return;
+    container.insertBefore(row, referenceRow);
+  }
+
+  function clearPriorityKvDragState() {
+    $$('#kv-优先信息 .kv-row').forEach(row => row.classList.remove('is-dragging', 'is-drag-over'));
+    if (draggedPriorityKvHandle && draggedPriorityPointerId !== null && draggedPriorityKvHandle.hasPointerCapture?.(draggedPriorityPointerId)) {
+      draggedPriorityKvHandle.releasePointerCapture(draggedPriorityPointerId);
+    }
+    draggedPriorityKvRow = null;
+    draggedPriorityKvHandle = null;
+    draggedPriorityPointerId = null;
+    priorityPointerMoved = false;
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('.kv-drag-handle');
+    const row = handle?.closest('.kv-row');
+    if (!row || row.getAttribute('data-section') !== '优先信息') return;
+    e.preventDefault();
+    draggedPriorityKvRow = row;
+    draggedPriorityKvHandle = handle;
+    draggedPriorityPointerId = e.pointerId;
+    priorityPointerMoved = false;
+    row.classList.add('is-dragging');
+    handle.setPointerCapture(e.pointerId);
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!draggedPriorityKvRow || e.pointerId !== draggedPriorityPointerId) return;
+    const targetElement = document.elementFromPoint(e.clientX, e.clientY);
+    const targetRow = targetElement?.closest?.('.kv-row');
+    if (!targetRow || targetRow === draggedPriorityKvRow || targetRow.getAttribute('data-section') !== '优先信息') {
+      $$('#kv-优先信息 .kv-row').forEach(row => row.classList.remove('is-drag-over'));
+      return;
+    }
+
+    e.preventDefault();
+    const insertBefore = e.clientY < targetRow.getBoundingClientRect().top + targetRow.offsetHeight / 2;
+    movePriorityKvRow(draggedPriorityKvRow, targetRow, insertBefore);
+    priorityPointerMoved = true;
+    $$('#kv-优先信息 .kv-row').forEach(row => row.classList.remove('is-drag-over'));
+    targetRow.classList.add('is-drag-over');
+  });
+
+  document.addEventListener('pointerup', (e) => {
+    if (!draggedPriorityKvRow || e.pointerId !== draggedPriorityPointerId) return;
+    e.preventDefault();
+    if (priorityPointerMoved) showToast('字段顺序已调整，请点击“保存并实时同步”');
+    clearPriorityKvDragState();
+  });
+
+  document.addEventListener('pointercancel', (e) => {
+    if (e.pointerId === draggedPriorityPointerId) clearPriorityKvDragState();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const handle = e.target.closest('.kv-drag-handle');
+    const row = handle?.closest('.kv-row');
+    if (!row || row.getAttribute('data-section') !== '优先信息') return;
+    const isMovingUp = e.key === 'ArrowUp';
+    const isMovingDown = e.key === 'ArrowDown';
+    if (!isMovingUp && !isMovingDown) return;
+
+    e.preventDefault();
+    const sibling = isMovingUp ? row.previousElementSibling : row.nextElementSibling;
+    if (!sibling) return;
+    movePriorityKvRow(row, sibling, isMovingUp);
+    handle.focus();
+    showToast('字段顺序已调整，请点击“保存并实时同步”');
+  });
 
   // 全局事件委托：绑定简历资料库全部动态按钮事件 (彻底规避 Chrome CSP 限制)
   document.addEventListener('click', (e) => {
@@ -952,7 +1057,9 @@ if (typeof document !== 'undefined') (() => {
     });
 
     currentResume = ordered;
+    priorityFieldOrder = Object.keys(updated['优先信息'] || {});
     await storageSet(RESUME_STORAGE_KEY, currentResume);
+    await storageSet(RESUME_PRIORITY_ORDER_STORAGE_KEY, priorityFieldOrder);
     saveSnapshot(records, currentResume);
     showToast('🎉 简历资料库已保存！所有网页侧边栏已实时同步');
   }
@@ -982,7 +1089,9 @@ if (typeof document !== 'undefined') (() => {
         const parsed = JSON.parse(evt.target.result);
         if (parsed && typeof parsed === 'object') {
           currentResume = parsed;
+          priorityFieldOrder = Object.keys(currentResume['优先信息'] || {});
           await storageSet(RESUME_STORAGE_KEY, currentResume);
+          await storageSet(RESUME_PRIORITY_ORDER_STORAGE_KEY, priorityFieldOrder);
           renderResumeEditor();
           showToast('✅ 简历已成功导入并同步！');
         }
@@ -998,7 +1107,9 @@ if (typeof document !== 'undefined') (() => {
   $('#resumeResetSeedBtn').addEventListener('click', async () => {
     if (confirm('确定要重置简历为默认示例数据吗？')) {
       currentResume = DEFAULT_RESUME;
+      priorityFieldOrder = Object.keys(currentResume['优先信息'] || {});
       await storageSet(RESUME_STORAGE_KEY, currentResume);
+      await storageSet(RESUME_PRIORITY_ORDER_STORAGE_KEY, priorityFieldOrder);
       renderResumeEditor();
       showToast('已重置为示例简历');
     }

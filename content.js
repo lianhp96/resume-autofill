@@ -62,6 +62,7 @@ if (typeof document !== 'undefined') (() => {
   if (document.getElementById('autumn-job-assistant-host')) return;
 
   const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
+  const RESUME_PRIORITY_ORDER_STORAGE_KEY = 'autumnRecruitmentTracker.resume.priorityOrder.v1';
   const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
   const SETTINGS_STORAGE_KEY = 'autumnRecruitmentTracker.settings.v1';
   const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
@@ -136,6 +137,7 @@ if (typeof document !== 'undefined') (() => {
   };
 
   let currentResumeData = DEFAULT_RESUME;
+  let priorityFieldOrder = [];
   let lastFocusedEl = null;
   let lastSelectionStart = null;
   let lastSelectionEnd = null;
@@ -757,6 +759,18 @@ if (typeof document !== 'undefined') (() => {
   const openResumeBtn = shadow.getElementById('aja-open-resume-btn');
 
   // ================= 渲染简历模块 =================
+  function getPriorityFieldEntries(sectionData) {
+    const entries = Object.entries(sectionData);
+    if (!priorityFieldOrder.length) return entries;
+    const entryMap = new Map(entries);
+    const orderedKeys = priorityFieldOrder.filter(key => entryMap.has(key));
+    const orderedKeySet = new Set(orderedKeys);
+    return [
+      ...orderedKeys.map(key => [key, entryMap.get(key)]),
+      ...entries.filter(([key]) => !orderedKeySet.has(key))
+    ];
+  }
+
   function renderResumeSections(resume) {
     if (!resume || typeof resume !== 'object') return;
     let html = '';
@@ -803,7 +817,10 @@ if (typeof document !== 'undefined') (() => {
       } else if (typeof sectionData === 'object') {
         // 普通对象模块（如基本信息、优先信息）
         html += `<div class="exp-row">`;
-        for (const [k, v] of Object.entries(sectionData)) {
+        const entries = sectionName === '优先信息'
+          ? getPriorityFieldEntries(sectionData)
+          : Object.entries(sectionData);
+        for (const [k, v] of entries) {
           if (v === undefined || v === null || v === '') continue;
           const strVal = String(v);
           html += `
@@ -826,10 +843,16 @@ if (typeof document !== 'undefined') (() => {
   async function loadResumeData() {
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const res = await chrome.storage.local.get([RESUME_STORAGE_KEY]);
+        const res = await chrome.storage.local.get([
+          RESUME_STORAGE_KEY,
+          RESUME_PRIORITY_ORDER_STORAGE_KEY
+        ]);
         if (res[RESUME_STORAGE_KEY]) {
           currentResumeData = res[RESUME_STORAGE_KEY];
         }
+        priorityFieldOrder = Array.isArray(res[RESUME_PRIORITY_ORDER_STORAGE_KEY])
+          ? res[RESUME_PRIORITY_ORDER_STORAGE_KEY]
+          : Object.keys(currentResumeData['优先信息'] || {});
       }
     } catch (e) {
       console.warn('读取扩展存储失败，使用默认简历', e);
@@ -843,6 +866,13 @@ if (typeof document !== 'undefined') (() => {
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName === 'local' && changes[RESUME_STORAGE_KEY]) {
         currentResumeData = changes[RESUME_STORAGE_KEY].newValue || DEFAULT_RESUME;
+      }
+      if (areaName === 'local' && changes[RESUME_PRIORITY_ORDER_STORAGE_KEY]) {
+        priorityFieldOrder = Array.isArray(changes[RESUME_PRIORITY_ORDER_STORAGE_KEY].newValue)
+          ? changes[RESUME_PRIORITY_ORDER_STORAGE_KEY].newValue
+          : Object.keys(currentResumeData['优先信息'] || {});
+      }
+      if (areaName === 'local' && (changes[RESUME_STORAGE_KEY] || changes[RESUME_PRIORITY_ORDER_STORAGE_KEY])) {
         renderResumeSections(currentResumeData);
       }
     });

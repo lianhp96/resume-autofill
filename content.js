@@ -51,8 +51,21 @@ function resolveApplicationDate(detectedDate, heuristicDate, referenceDate = new
     || formatApplicationDate(reference.getFullYear(), reference.getMonth() + 1, reference.getDate());
 }
 
+function buildAutofillPlanningPayload({ planner, documentRef, locationRef, resume } = {}) {
+  if (!planner || typeof planner.collectPageFields !== 'function' || typeof planner.buildProfileSchema !== 'function' || typeof planner.buildFormFingerprint !== 'function') {
+    throw new Error('自动填写规划模块不可用');
+  }
+  const pageFields = planner.collectPageFields(documentRef);
+  const profileSchema = planner.buildProfileSchema(resume);
+  return {
+    fingerprint: planner.buildFormFingerprint({ location: locationRef, fields: pageFields }),
+    pageFields,
+    profileSchema
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { resolveApplicationDate };
+  module.exports = { buildAutofillPlanningPayload, resolveApplicationDate };
 }
 
 if (typeof document !== 'undefined') (() => {
@@ -404,6 +417,61 @@ if (typeof document !== 'undefined') (() => {
     .capture-btn:hover {
       background: #0f46b6;
     }
+    .capture-btn:disabled {
+      cursor: wait;
+      opacity: 0.68;
+    }
+
+    .autofill-card {
+      background: #f7f9fd;
+      border: 1px solid #d6e1f1;
+      border-radius: 10px;
+      padding: 10px;
+    }
+    .autofill-hint {
+      margin: 7px 0 0;
+      color: #536177;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .autofill-plan {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #d6e1f1;
+    }
+    .autofill-plan.hidden { display: none; }
+    .autofill-plan-summary {
+      color: #38445c;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.45;
+    }
+    .autofill-plan-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      gap: 5px;
+      padding: 6px 7px;
+      border: 1px solid #e0e7f0;
+      border-radius: 6px;
+      background: #fff;
+      color: #38445c;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .autofill-plan-row span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .autofill-plan-arrow { color: #8a95aa; }
+    .autofill-plan-source {
+      color: #1457d9;
+      font-size: 10px;
+    }
 
     /* 快速微调确认表单 */
     .capture-form {
@@ -720,6 +788,14 @@ if (typeof document !== 'undefined') (() => {
           </div>
         </div>
 
+        <div class="autofill-card">
+          <button class="capture-btn" id="aja-plan-autofill-btn" type="button" aria-describedby="aja-autofill-hint">
+            <span>生成 AI 字段映射</span>
+          </button>
+          <p class="autofill-hint" id="aja-autofill-hint">仅发送页面字段和资料字段名称；不会向 AI 发送或向网页填写任何真实资料。</p>
+          <div class="autofill-plan hidden" id="aja-autofill-plan" aria-live="polite"></div>
+        </div>
+
         <!-- 简历资料库分类展示 -->
         <div id="aja-resume-list"></div>
       </div>
@@ -744,6 +820,8 @@ if (typeof document !== 'undefined') (() => {
   const closeBtn = shadow.getElementById('aja-close-btn');
   const dragHandle = shadow.getElementById('aja-drag-handle');
   const scanBtn = shadow.getElementById('aja-scan-btn');
+  const planAutofillBtn = shadow.getElementById('aja-plan-autofill-btn');
+  const autofillPlanEl = shadow.getElementById('aja-autofill-plan');
   const captureForm = shadow.getElementById('aja-capture-form');
   const capCompany = shadow.getElementById('cap-company');
   const capPosition = shadow.getElementById('cap-position');
@@ -1177,6 +1255,76 @@ if (typeof document !== 'undefined') (() => {
     capRequirements.value = detected.jobRequirements || heuristic.jobRequirements || '';
     captureForm.classList.remove('hidden');
     if (llmUsed) showToast('🤖 已用 AI 识别岗位信息，请核对');
+  });
+
+  function renderAutofillPlan(plan, pageFields, profileSchema, { degraded = false, message = '' } = {}) {
+    const pageById = new Map(pageFields.map(field => [field.id, field]));
+    const profileById = new Map(profileSchema.map(field => [field.id, field]));
+    autofillPlanEl.replaceChildren();
+    autofillPlanEl.classList.remove('hidden');
+
+    const summary = document.createElement('div');
+    summary.className = 'autofill-plan-summary';
+    const mappingCount = Array.isArray(plan?.mappings) ? plan.mappings.length : 0;
+    const unmappedCount = Array.isArray(plan?.unmappedPageFieldIds) ? plan.unmappedPageFieldIds.length : 0;
+    summary.textContent = message && mappingCount === 0
+      ? message
+      : degraded
+      ? `${message || 'AI 映射不可用'}；保留 ${mappingCount} 项本地匹配，${unmappedCount} 项待处理。`
+      : `已生成 ${mappingCount} 项映射，${unmappedCount} 项未映射。本阶段不会写入网页。`;
+    autofillPlanEl.appendChild(summary);
+
+    for (const mapping of Array.isArray(plan?.mappings) ? plan.mappings : []) {
+      const row = document.createElement('div');
+      row.className = 'autofill-plan-row';
+      const pageLabel = document.createElement('span');
+      pageLabel.textContent = pageById.get(mapping.pageFieldId)?.label || '未知页面字段';
+      const arrow = document.createElement('span');
+      arrow.className = 'autofill-plan-arrow';
+      arrow.textContent = '←';
+      const profileLabel = document.createElement('span');
+      const source = mapping.source === 'ai' ? 'AI' : '本地规则';
+      profileLabel.className = 'autofill-plan-source';
+      profileLabel.textContent = `${profileById.get(mapping.profileFieldId)?.label || '未知资料字段'} · ${source}`;
+      row.append(pageLabel, arrow, profileLabel);
+      autofillPlanEl.appendChild(row);
+    }
+  }
+
+  planAutofillBtn.addEventListener('click', async () => {
+    const originalHtml = planAutofillBtn.innerHTML;
+    try {
+      const planner = globalThis.AutofillPlanner;
+      if (!planner) throw new Error('自动填写规划模块不可用');
+      await loadResumeData();
+      const payload = buildAutofillPlanningPayload({
+        planner,
+        documentRef: document,
+        locationRef: location,
+        resume: currentResumeData
+      });
+      if (payload.pageFields.length === 0) {
+        renderAutofillPlan({ mappings: [], unmappedPageFieldIds: [] }, [], payload.profileSchema, { message: '当前页面没有可分析的空表单字段' });
+        return;
+      }
+      planAutofillBtn.disabled = true;
+      planAutofillBtn.setAttribute('aria-busy', 'true');
+      planAutofillBtn.innerHTML = '<span>生成映射中...</span>';
+      const result = await new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: 'PLAN_AUTOFILL_LLM', ...payload }, resolve);
+      });
+      if (!result?.ok || !result.plan) throw new Error(result?.message || '生成映射失败');
+      renderAutofillPlan(result.plan, payload.pageFields, payload.profileSchema, result);
+      showToast(result.degraded ? '已保留本地匹配结果' : '已生成字段映射计划');
+    } catch (err) {
+      console.warn('生成自动填写映射失败', err);
+      renderAutofillPlan({ mappings: [], unmappedPageFieldIds: [] }, [], [], { degraded: true, message: err.message || '生成映射失败' });
+      showToast('生成映射失败');
+    } finally {
+      planAutofillBtn.disabled = false;
+      planAutofillBtn.removeAttribute('aria-busy');
+      planAutofillBtn.innerHTML = originalHtml;
+    }
   });
 
   capCancelBtn.addEventListener('click', () => {

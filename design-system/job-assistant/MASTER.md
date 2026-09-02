@@ -39,6 +39,7 @@ Use responsive page padding: `16px` on mobile, `24px` on tablet, and `32px` on d
 - **Buttons:** default, hover, active, `:focus-visible`, disabled, and destructive variants are required. Minimum touch target is `44px`.
 - **Inputs:** visible label, default, hover, focus, invalid, disabled, and helper/error text states are required.
 - **Navigation:** active state uses color, weight, and a shape/indicator—not color alone.
+- **Sidebar navigation:** use the `JA / Job Assistant` brand lockup and four numbered entries: `投递追踪`、`我的简历`、`数据备份`、`AI 设置`. The active entry uses a blue soft surface and white number tile.
 - **Stage badges:** text always remains visible; color is secondary meaning. Compact labels stay on one line.
 - **Dialogs:** preserve visible heading, labelled close control, contained scrolling, and focus visibility.
 - **Loading/status:** use plain-language live status text; never communicate success or failure using an icon alone.

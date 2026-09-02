@@ -267,8 +267,10 @@ if (typeof document !== 'undefined') (() => {
 
   function switchTab(tabId) {
     $$('.sidebar-nav .nav-item').forEach(item => {
-      if (item.getAttribute('data-tab') === tabId) item.classList.add('is-active');
-      else item.classList.remove('is-active');
+      const isActive = item.getAttribute('data-tab') === tabId;
+      item.classList.toggle('is-active', isActive);
+      if (isActive) item.setAttribute('aria-current', 'page');
+      else item.removeAttribute('aria-current');
     });
 
     $$('.tab-content').forEach(content => {
@@ -355,6 +357,14 @@ if (typeof document !== 'undefined') (() => {
     $('#activeCount').textContent = records.filter(r => !['Offer', '简历挂', '已结束', '待投递'].includes(r.stage)).length;
     $('#weekCount').textContent = records.filter(r => r.scheduleAt && new Date(r.scheduleAt) >= new Date()).length;
     $('#offerCount').textContent = records.filter(r => r.stage === 'Offer').length;
+    const scheduledCount = records.filter(r => isRecordUpcomingSchedule(r)).length;
+    const pendingTodoCount = records.filter(r => isRecordPendingTodo(r)).length;
+    const rhythmEl = $('#sidebarRhythm');
+    if (rhythmEl) {
+      rhythmEl.textContent = (scheduledCount || pendingTodoCount)
+        ? `本周 ${scheduledCount} 场日程，${pendingTodoCount} 项待办待处理。优先处理标记的岗位。`
+        : '本周暂无日程或待办，继续完善投递记录。';
+    }
 
     // 渲染阶段漏斗
     const pipelineEl = $('#stagePipeline');

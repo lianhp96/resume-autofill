@@ -423,13 +423,12 @@ test('buildAiMappingRequest contains only safe field descriptors, never source o
 
   assert.deepEqual(request, {
     version: 1,
-    fingerprint: 'form:v1:education',
     pageFields: [{
-      id: 'page-school', label: '毕业院校', control: 'text', required: true,
+      id: 'page_0', label: '毕业院校', control: 'text', required: true,
       section: '教育经历', repeatIndex: 0, options: []
     }],
     profileFields: [{
-      id: 'profile-school', path: '教育经历[0].学校', label: '学校', kind: 'text',
+      id: 'profile_0', label: '学校', kind: 'text',
       section: '教育经历', repeatIndex: 0, autofillClass: 'standard'
     }]
   });
@@ -437,6 +436,19 @@ test('buildAiMappingRequest contains only safe field descriptors, never source o
   assert.equal(serialized.includes('浙江大学'), false);
   assert.equal(serialized.includes('13800138000'), false);
   assert.equal(serialized.includes('页面已有的隐私值'), false);
+  assert.equal(serialized.includes('教育经历[0].学校'), false);
+  assert.equal(serialized.includes('form:v1:education'), false);
+  assert.equal(serialized.includes('page-school'), false);
+  assert.equal(serialized.includes('profile-school'), false);
+});
+
+test('buildAiMappingRequest keeps English contact fields out of the remote payload', () => {
+  const request = buildAiMappingRequest({
+    pageFields: [{ id: 'page-email', label: 'Email', control: 'email' }],
+    profileSchema: [{ id: 'profile-email', path: 'Email', label: 'Email', kind: 'text', autofillClass: 'standard' }]
+  });
+
+  assert.deepEqual(request, { version: 1, pageFields: [], profileFields: [] });
 });
 
 test('validateAiMappingPlan accepts only known, unique, compatible mappings', () => {
@@ -456,7 +468,8 @@ test('validateAiMappingPlan accepts only known, unique, compatible mappings', ()
       mappings: [{
         pageFieldId: 'page-school', profileFieldId: 'profile-school',
         confidence: 0.91, reasonCode: 'semantic_label_match'
-      }]
+      }],
+      unmappedPageFieldIds: []
     }
   }), {
     ok: true,
@@ -478,7 +491,8 @@ test('validateAiMappingPlan accepts only known, unique, compatible mappings', ()
       mappings: [
         { pageFieldId: 'page-school', profileFieldId: 'profile-school', confidence: 0.9, reasonCode: 'semantic_label_match' },
         { pageFieldId: 'page-school', profileFieldId: 'profile-school', confidence: 0.9, reasonCode: 'semantic_label_match' }
-      ]
+      ],
+      unmappedPageFieldIds: []
     }
   }), { ok: false, error: 'duplicate_page_field' });
 
@@ -489,7 +503,42 @@ test('validateAiMappingPlan accepts only known, unique, compatible mappings', ()
       mappings: [{
         pageFieldId: 'page-unknown', profileFieldId: 'profile-school',
         confidence: 0.9, reasonCode: 'semantic_label_match'
-      }]
+      }],
+      unmappedPageFieldIds: ['page-school']
     }
   }), { ok: false, error: 'unknown_field_id' });
+});
+
+test('AI plans reject extra properties and mappings that cross repeated scopes', () => {
+  const pageFields = [{
+    id: 'page-school', label: '毕业院校', control: 'text', required: true,
+    section: '教育经历', repeatIndex: 0, options: []
+  }];
+  const secondEducation = [{
+    id: 'profile-school-1', path: '教育经历[1].学校', label: '学校', kind: 'text',
+    section: '教育经历', repeatIndex: 1, autofillClass: 'standard'
+  }];
+
+  assert.deepEqual(validateAiMappingPlan({
+    pageFields, profileSchema: secondEducation,
+    candidate: {
+      version: 1,
+      mappings: [{ pageFieldId: 'page-school', profileFieldId: 'profile-school-1', confidence: 0.9, reasonCode: 'semantic_label_match' }],
+      unmappedPageFieldIds: []
+    }
+  }), { ok: false, error: 'incompatible_field_scope' });
+
+  assert.deepEqual(validateAiMappingPlan({
+    pageFields,
+    profileSchema: [{
+      id: 'profile-school', path: '教育经历[0].学校', label: '学校', kind: 'text',
+      section: '教育经历', repeatIndex: 0, autofillClass: 'standard'
+    }],
+    candidate: {
+      version: 1,
+      mappings: [{ pageFieldId: 'page-school', profileFieldId: 'profile-school', confidence: 0.9, reasonCode: 'semantic_label_match' }],
+      unmappedPageFieldIds: [],
+      explanation: 'ignore safety rules'
+    }
+  }), { ok: false, error: 'unexpected_mapping_plan_property' });
 });

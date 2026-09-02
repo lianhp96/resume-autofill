@@ -9,6 +9,11 @@ const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
 const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
 const LLM_LOGS_STORAGE_KEY = 'autumnRecruitmentTracker.llmLogs.v1';
 const AUTOFILL_PLANNER = self.AutofillPlanner;
+const MAX_AUTOFILL_PAGE_FIELDS = 80;
+const MAX_AUTOFILL_PROFILE_FIELDS = 120;
+const MIN_AUTOFILL_REQUEST_INTERVAL_MS = 1500;
+const AUTOFILL_LLM_TIMEOUT_MS = 12000;
+let lastAutofillPlanAt = 0;
 
 // 初始默认示例简历数据
 const DEFAULT_RESUME_DATA = {
@@ -149,23 +154,27 @@ const AUTOFILL_MAPPING_SYSTEM_PROMPT = `你是网申表单字段映射助手。�
       "confidence": 0.0,
       "reasonCode": "semantic_label_match"
     }
-  ]
+  ],
+  "unmappedPageFieldIds": ["未映射的页面字段 ID"]
 }
 
-约束：只使用输入中已有的 ID；不能重复使用页面字段或资料字段；不确定时不要映射；confidence 必须在 0 到 1 之间；reasonCode 只用小写英文和下划线。`;
+约束：只使用输入中已有的 ID；不能重复使用页面字段或资料字段；不确定时不要映射；unmappedPageFieldIds 必须恰好列出所有没有出现在 mappings 中的页面字段 ID；confidence 必须在 0 到 1 之间；reasonCode 只用小写英文和下划线。`;
 
 function normalizeBaseUrl(baseUrl) {
   return (baseUrl || '').trim().replace(/\/+$/, '');
 }
 
-async function requestLLMAttempt(url, headers, body, attempts, attempt, jsonMode) {
+async function requestLLMAttempt(url, headers, body, attempts, attempt, jsonMode, timeoutMs = 0) {
   const startedAt = performance.now();
   let status = null;
+  const controller = timeoutMs > 0 ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      ...(controller ? { signal: controller.signal } : {})
     });
     status = response.status;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -183,10 +192,12 @@ async function requestLLMAttempt(url, headers, body, attempts, attempt, jsonMode
       error: String(err.message || err).slice(0, 120)
     });
     throw err;
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 
-async function callLLM(config, messages) {
+async function callLLM(config, messages, { timeoutMs = 0 } = {}) {
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   const url = `${baseUrl}/chat/completions`;
   const headers = {
@@ -204,11 +215,11 @@ async function callLLM(config, messages) {
   const attempts = [];
   const startedAt = performance.now();
   try {
-    const content = await requestLLMAttempt(url, headers, { ...baseBody, response_format: { type: 'json_object' } }, attempts, 1, true);
+    const content = await requestLLMAttempt(url, headers, { ...baseBody, response_format: { type: 'json_object' } }, attempts, 1, true, timeoutMs);
     return { content, attempts, apiMs: Math.round(performance.now() - startedAt), thinkingDisabled };
   } catch (_) {
     try {
-      const content = await requestLLMAttempt(url, headers, baseBody, attempts, 2, false);
+      const content = await requestLLMAttempt(url, headers, baseBody, attempts, 2, false, timeoutMs);
       return { content, attempts, apiMs: Math.round(performance.now() - startedAt), thinkingDisabled };
     } catch (err) {
       err.llmAttempts = attempts;
@@ -223,6 +234,33 @@ function parseJsonContent(content) {
   const m = String(content || '').match(/\{[\s\S]*\}/);
   if (m) { try { return JSON.parse(m[0]); } catch (_) {} }
   return null;
+}
+
+function parseStrictJsonObject(content) {
+  try {
+    const parsed = JSON.parse(String(content || ''));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function normalizeAutofillFingerprint(value) {
+  const fingerprint = String(value || '');
+  return /^form:v1:[a-z0-9]{1,64}$/.test(fingerprint) ? fingerprint : '';
+}
+
+function restoreAiPlanIds(remotePlan, mappingRequest) {
+  const pageIdByRemoteId = new Map(mappingRequest.pageFields.map(field => [field.id, field.localId]));
+  const profileIdByRemoteId = new Map(mappingRequest.profileFields.map(field => [field.id, field.localId]));
+  return {
+    mappings: remotePlan.mappings.map(mapping => ({
+      ...mapping,
+      pageFieldId: pageIdByRemoteId.get(mapping.pageFieldId),
+      profileFieldId: profileIdByRemoteId.get(mapping.profileFieldId)
+    })),
+    unmappedPageFieldIds: remotePlan.unmappedPageFieldIds.map(id => pageIdByRemoteId.get(id))
+  };
 }
 
 async function llmGetConfig() {
@@ -325,9 +363,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       const startedAt = performance.now();
       if (!AUTOFILL_PLANNER) return sendResponse({ ok: false, message: '自动填写规划模块不可用' });
-      const mappingRequest = AUTOFILL_PLANNER.buildAiMappingRequest({
-        fingerprint: request.fingerprint,
+      const fingerprint = normalizeAutofillFingerprint(request.fingerprint);
+      const localPlan = AUTOFILL_PLANNER.planAutofill({
+        fingerprint,
         pageFields: request.pageFields,
+        profileSchema: request.profileSchema
+      });
+      const unresolvedPageFieldIds = new Set(localPlan.unmappedPageFieldIds);
+      const mappingRequest = AUTOFILL_PLANNER.buildAiMappingRequest({
+        pageFields: (Array.isArray(request.pageFields) ? request.pageFields : [])
+          .filter(field => unresolvedPageFieldIds.has(field.id)),
         profileSchema: request.profileSchema
       });
       const baseLog = {
@@ -338,6 +383,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       };
       let config = {};
       try {
+        if (mappingRequest.pageFields.length === 0 || mappingRequest.profileFields.length === 0) {
+          await appendLlmLog({ ...baseLog, ok: true, status: 'local_only', mappingCount: localPlan.mappings.length, totalMs: Math.round(performance.now() - startedAt), attempts: [] });
+          return sendResponse({ ok: true, plan: localPlan });
+        }
+        if (mappingRequest.pageFields.length > MAX_AUTOFILL_PAGE_FIELDS || mappingRequest.profileFields.length > MAX_AUTOFILL_PROFILE_FIELDS) {
+          await appendLlmLog({ ...baseLog, ok: false, status: 'skipped', error: '安全字段数量超过上限', totalMs: Math.round(performance.now() - startedAt), attempts: [] });
+          return sendResponse({ ok: false, message: '自动填写字段数量超过安全上限' });
+        }
         config = await llmGetConfig();
         Object.assign(baseLog, { model: config.model || '', endpoint: safeEndpoint(config.baseUrl) });
         if (!config.enabled) {
@@ -348,20 +401,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           await appendLlmLog({ ...baseLog, ok: false, status: 'skipped', error: 'LLM 配置不完整', totalMs: Math.round(performance.now() - startedAt), attempts: [] });
           return sendResponse({ ok: false, message: 'LLM 配置不完整' });
         }
-        if (mappingRequest.pageFields.length === 0 || mappingRequest.profileFields.length === 0) {
-          await appendLlmLog({ ...baseLog, ok: false, status: 'skipped', error: '没有可安全映射的字段', totalMs: Math.round(performance.now() - startedAt), attempts: [] });
-          return sendResponse({ ok: false, message: '没有可安全映射的字段' });
+        if (Date.now() - lastAutofillPlanAt < MIN_AUTOFILL_REQUEST_INTERVAL_MS) {
+          await appendLlmLog({ ...baseLog, ok: false, status: 'rate_limited', error: '请求过于频繁', totalMs: Math.round(performance.now() - startedAt), attempts: [] });
+          return sendResponse({ ok: false, message: '请稍后再试' });
         }
+        lastAutofillPlanAt = Date.now();
         const result = await callLLM(config, [
           { role: 'system', content: AUTOFILL_MAPPING_SYSTEM_PROMPT },
           { role: 'user', content: JSON.stringify(mappingRequest) }
-        ]);
-        const parsed = parseJsonContent(result.content);
+        ], { timeoutMs: AUTOFILL_LLM_TIMEOUT_MS });
+        const parsed = parseStrictJsonObject(result.content);
+        if (!parsed) {
+          await appendLlmLog({
+            ...baseLog, ok: false, status: 'parse_error', error: 'LLM 返回不符合 JSON 契约',
+            outputChars: result.content.length, apiMs: result.apiMs, thinkingDisabled: result.thinkingDisabled,
+            totalMs: Math.round(performance.now() - startedAt), attempts: result.attempts
+          });
+          return sendResponse({ ok: false, message: 'LLM 返回不符合 JSON 契约' });
+        }
         const validation = AUTOFILL_PLANNER.validateAiMappingPlan({
           candidate: parsed,
-          fingerprint: mappingRequest.fingerprint,
-          pageFields: request.pageFields,
-          profileSchema: request.profileSchema
+          fingerprint,
+          pageFields: mappingRequest.pageFields,
+          profileSchema: mappingRequest.profileFields
         });
         await appendLlmLog({
           ...baseLog,
@@ -376,7 +438,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           attempts: result.attempts
         });
         if (!validation.ok) return sendResponse({ ok: false, message: `AI 映射未通过校验: ${validation.error}` });
-        sendResponse({ ok: true, plan: validation.plan });
+        const aiPlan = restoreAiPlanIds(validation.plan, mappingRequest);
+        const aiEligiblePageIds = new Set(mappingRequest.pageFields.map(field => field.localId));
+        sendResponse({
+          ok: true,
+          plan: {
+            version: 1,
+            fingerprint,
+            mappings: [...localPlan.mappings, ...aiPlan.mappings],
+            unmappedPageFieldIds: [
+              ...localPlan.unmappedPageFieldIds.filter(id => !aiEligiblePageIds.has(id)),
+              ...aiPlan.unmappedPageFieldIds
+            ]
+          }
+        });
       } catch (err) {
         await appendLlmLog({
           ...baseLog,

@@ -6,9 +6,10 @@
   'use strict';
 
   const DEFAULT_AUTOFILL_POLICY = Object.freeze({
-    neverAutofillPattern: /身份证|证件|护照|银行卡|密码|验证码|手机|电话|邮箱|微信|qq|社交账号|联系人|民族|宗教|政治面貌|婚姻|婚育|健康|病史|残障|薪资|薪酬|调剂|授权|声明|签名|背景调查|开放题|自我评价|自我介绍|应聘理由|文件|附件|简历上传/i,
-    confirmBeforeAutofillPattern: /性别|出生|籍贯|户籍|住址|地址/i
+    neverAutofillPattern: /身份证|证件|护照|银行卡|密码|验证码|手机|电话|邮箱|微信|qq|社交账号|联系人|民族|宗教|政治面貌|婚姻|婚育|健康|病史|残障|薪资|薪酬|调剂|授权|声明|签名|背景调查|开放题|自我评价|自我介绍|应聘理由|文件|附件|简历上传|\b(?:email|e-mail|phone|mobile|telephone|wechat|weixin|contact|address|passport|id(?:number|card)?|salary|compensation|marital|health|political)\b/i,
+    confirmBeforeAutofillPattern: /性别|出生|籍贯|户籍|住址|地址|\b(?:gender|birth|residence|household)\b/i
   });
+  const MAX_AI_MAPPING_ENTRIES = 128;
 
   const FIELD_ALIASES = {
     '姓名': ['姓名', '中文名', '真实姓名', '申请人姓名'],
@@ -265,13 +266,14 @@
     return `form:v1:${stableHash(`${origin}${pathname}\n${fieldSignature}`)}`;
   }
 
-  function buildAiMappingRequest({ pageFields, profileSchema, policy = DEFAULT_AUTOFILL_POLICY, fingerprint = '' } = {}) {
+  function buildAiMappingRequest({ pageFields, profileSchema, policy = DEFAULT_AUTOFILL_POLICY } = {}) {
     const safePageFields = (Array.isArray(pageFields) ? pageFields : [])
-      .map(field => {
+      .map((field, index) => {
         const label = sanitizeDescriptorText(field.label);
-        if (!label || classifyField(label, policy) !== 'standard') return null;
-        return {
-          id: String(field.id || ''),
+        const localId = String(field.id || '');
+        if (!label || !isSafeDescriptorId(localId) || classifyField(label, policy) !== 'standard') return null;
+        const descriptor = {
+          id: `page_${index}`,
           label,
           control: String(field.control || ''),
           required: Boolean(field.required),
@@ -279,29 +281,36 @@
           repeatIndex: Number.isInteger(field.repeatIndex) ? field.repeatIndex : null,
           options: (Array.isArray(field.options) ? field.options : []).map(sanitizeDescriptorText).filter(Boolean).slice(0, 30)
         };
+        Object.defineProperty(descriptor, 'localId', { value: localId, enumerable: false });
+        return descriptor;
       })
       .filter(field => field && field.id);
     const safeProfileFields = (Array.isArray(profileSchema) ? profileSchema : [])
-      .map(field => {
+      .map((field, index) => {
         const label = sanitizeDescriptorText(field.label);
-        if (!label || field.autofillClass !== 'standard' || classifyField(label, policy) !== 'standard') return null;
-        return {
-          id: String(field.id || ''),
-          path: String(field.path || ''),
+        const localId = String(field.id || '');
+        if (!label || !isSafeDescriptorId(localId) || field.autofillClass !== 'standard' || classifyField(label, policy) !== 'standard') return null;
+        const descriptor = {
+          id: `profile_${index}`,
           label,
           kind: String(field.kind || ''),
           section: sanitizeDescriptorText(field.section),
           repeatIndex: Number.isInteger(field.repeatIndex) ? field.repeatIndex : null,
           autofillClass: 'standard'
         };
+        Object.defineProperty(descriptor, 'localId', { value: localId, enumerable: false });
+        return descriptor;
       })
-      .filter(field => field && field.id && field.path);
+      .filter(field => field && field.id);
     return {
       version: 1,
-      fingerprint: String(fingerprint || ''),
       pageFields: safePageFields,
       profileFields: safeProfileFields
     };
+  }
+
+  function isSafeDescriptorId(value) {
+    return value.length > 0 && value.length <= 256 && !/[\r\n]/.test(value);
   }
 
   function normalizePathTemplate(pathname) {
@@ -326,14 +335,24 @@
     if (!candidate || typeof candidate !== 'object' || candidate.version !== 1 || !Array.isArray(candidate.mappings)) {
       return { ok: false, error: 'invalid_mapping_plan' };
     }
+    if (!Array.isArray(candidate.unmappedPageFieldIds)) return { ok: false, error: 'invalid_unmapped_fields' };
+    if (!hasOnlyKeys(candidate, ['version', 'mappings', 'unmappedPageFieldIds'])) {
+      return { ok: false, error: 'unexpected_mapping_plan_property' };
+    }
     const pageById = new Map((Array.isArray(pageFields) ? pageFields : []).map(field => [field.id, field]));
     const profileById = new Map((Array.isArray(profileSchema) ? profileSchema : []).map(field => [field.id, field]));
+    if (candidate.mappings.length > MAX_AI_MAPPING_ENTRIES || candidate.unmappedPageFieldIds.length > MAX_AI_MAPPING_ENTRIES) {
+      return { ok: false, error: 'too_many_mapping_entries' };
+    }
     const usedPageIds = new Set();
     const usedProfileIds = new Set();
     const mappings = [];
 
     for (const mapping of candidate.mappings) {
       if (!mapping || typeof mapping !== 'object') return { ok: false, error: 'invalid_mapping' };
+      if (!hasOnlyKeys(mapping, ['pageFieldId', 'profileFieldId', 'confidence', 'reasonCode'])) {
+        return { ok: false, error: 'unexpected_mapping_property' };
+      }
       const pageField = pageById.get(mapping.pageFieldId);
       const profileField = profileById.get(mapping.profileFieldId);
       if (!pageField || !profileField) return { ok: false, error: 'unknown_field_id' };
@@ -343,6 +362,7 @@
         return { ok: false, error: 'forbidden_field' };
       }
       if (!isCompatible(pageField, profileField)) return { ok: false, error: 'incompatible_field_type' };
+      if (!inSameScope(pageField, profileField)) return { ok: false, error: 'incompatible_field_scope' };
       if (typeof mapping.confidence !== 'number' || mapping.confidence < 0 || mapping.confidence > 1) {
         return { ok: false, error: 'invalid_confidence' };
       }
@@ -359,15 +379,25 @@
       usedProfileIds.add(profileField.id);
     }
 
+    const expectedUnmapped = Array.from(pageById.keys()).filter(id => !usedPageIds.has(id));
+    const candidateUnmapped = candidate.unmappedPageFieldIds;
+    if (candidateUnmapped.length !== expectedUnmapped.length || new Set(candidateUnmapped).size !== candidateUnmapped.length || candidateUnmapped.some(id => !expectedUnmapped.includes(id))) {
+      return { ok: false, error: 'invalid_unmapped_fields' };
+    }
+
     return {
       ok: true,
       plan: {
         version: 1,
         fingerprint: String(fingerprint || ''),
         mappings,
-        unmappedPageFieldIds: Array.from(pageById.keys()).filter(id => !usedPageIds.has(id))
+        unmappedPageFieldIds: expectedUnmapped
       }
     };
+  }
+
+  function hasOnlyKeys(value, allowedKeys) {
+    return Object.keys(value).every(key => allowedKeys.includes(key));
   }
 
   function inSameScope(pageField, profileField) {

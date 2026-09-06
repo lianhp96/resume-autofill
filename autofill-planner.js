@@ -172,6 +172,44 @@
     };
   }
 
+  function isStructuralContextNode(node) {
+    const tagName = String(node?.tagName || '').toLowerCase();
+    if (['label', 'legend', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) return true;
+    const className = String(node?.className || '');
+    return /(?:^|[\s_-])(?:label|title|caption|header)(?:$|[\s_-])/i.test(className);
+  }
+
+  // Reads only text explicitly marked as form structure. It never reads input values
+  // or an ancestor's aggregate text, which could include values from other controls.
+  function readStructuralContextText(node) {
+    if (!isStructuralContextNode(node)) return '';
+    const attributes = ['data-autofill-section', 'data-autofill-label', 'data-label', 'data-title', 'aria-label'];
+    for (const attribute of attributes) {
+      const value = sanitizeDescriptorText(readAttribute(node, attribute));
+      if (value) return value;
+    }
+    return sanitizeDescriptorText(node?.innerText || node?.textContent);
+  }
+
+  function extractStructuralContext(element, ownLabel, section) {
+    const ignoredLabels = new Set([normalizeLabel(ownLabel), normalizeLabel(section)].filter(Boolean));
+    const parts = [];
+    let node = element?.parentElement || null;
+
+    // A short ancestor walk catches common form-item and group wrappers without
+    // turning the entire page layout into prompt context.
+    for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement || null) {
+      const candidates = [node, ...Array.from(node.children || [])];
+      for (const candidate of candidates) {
+        const text = readStructuralContextText(candidate);
+        const normalized = normalizeLabel(text);
+        if (!normalized || ignoredLabels.has(normalized) || parts.some(part => normalizeLabel(part) === normalized)) continue;
+        parts.unshift(text);
+      }
+    }
+    return sanitizeDescriptorText(parts.slice(0, 3).join(' > '));
+  }
+
   function scopeIdentity(element) {
     if (!element || (typeof element !== 'object' && typeof element !== 'function')) return 'root';
     if (!scopeIds.has(element)) {
@@ -191,33 +229,39 @@
     const tagName = String(element.tagName || '').toLowerCase();
     const inputType = String(element.type || readAttribute(element, 'type') || '').toLowerCase();
     const scope = extractScope(element);
+    const label = extractPageFieldLabel(element, documentRef);
+    const context = extractStructuralContext(element, label, scope.section);
     return {
-      label: extractPageFieldLabel(element, documentRef),
+      label,
       control: tagName === 'textarea' ? 'textarea' : (tagName === 'select' ? 'select' : (inputType || 'text')),
       required: Boolean(element.required || readAttribute(element, 'required') !== null),
       section: scope.section,
       repeatIndex: scope.repeatIndex,
       hasExistingValue: false,
-      options: extractSelectOptions(element)
+      options: extractSelectOptions(element),
+      ...(context ? { context } : {})
     };
   }
 
   function describeChoiceGroup(elements, documentRef) {
     const first = elements[0];
     const scope = extractScope(first);
+    const label = scope.label || sanitizeDescriptorText(readAttribute(first, 'name') || first.name);
+    const context = extractStructuralContext(first, label, scope.section);
     const options = elements
       .map(element => extractPageFieldLabel(element, documentRef))
       .filter(Boolean)
       .filter((label, index, labels) => labels.indexOf(label) === index)
       .slice(0, 30);
     return {
-      label: scope.label || sanitizeDescriptorText(readAttribute(first, 'name') || first.name),
+      label,
       control: String(first.type || readAttribute(first, 'type') || '').toLowerCase(),
       required: elements.some(element => Boolean(element.required || readAttribute(element, 'required') !== null)),
       section: scope.section,
       repeatIndex: scope.repeatIndex,
       hasExistingValue: false,
-      options
+      options,
+      ...(context ? { context } : {})
     };
   }
 
@@ -255,7 +299,7 @@
           isCurrent() {
             if (Array.isArray(entry) || !documentRef.contains(entry) || !isVisibleWritableControl(entry)) return false;
             const current = describePageField(entry, documentRef);
-            return ['label', 'control', 'section', 'repeatIndex'].every(key => current[key] === field[key]);
+            return ['label', 'control', 'section', 'repeatIndex', 'context'].every(key => current[key] === field[key]);
           }
         });
         return descriptor;
@@ -279,6 +323,7 @@
       String(field.control || ''),
       field.required ? 'required' : 'optional',
       normalizeLabel(field.section),
+      normalizeLabel(field.context),
       field.repeatIndex ?? '',
       (Array.isArray(field.options) ? field.options : []).map(normalizeLabel).join(',')
     ].join('|')).join('\n');
@@ -290,7 +335,8 @@
       .map((field, index) => {
         const label = sanitizeDescriptorText(field.label);
         const localId = String(field.id || '');
-        if (!label || !isSafeDescriptorId(localId) || (!previewOnly && classifyField(label, policy) !== 'standard')) return null;
+        if (!label || isUnsupportedStandaloneDateComponent(label) || !isSafeDescriptorId(localId) || (!previewOnly && classifyField(label, policy) !== 'standard')) return null;
+        const context = sanitizeDescriptorText(field.context);
         const descriptor = {
           id: `page_${index}`,
           label,
@@ -298,7 +344,8 @@
           required: Boolean(field.required),
           section: sanitizeDescriptorText(field.section),
           repeatIndex: Number.isInteger(field.repeatIndex) ? field.repeatIndex : null,
-          options: (Array.isArray(field.options) ? field.options : []).map(sanitizeDescriptorText).filter(Boolean).slice(0, 30)
+          options: (Array.isArray(field.options) ? field.options : []).map(sanitizeDescriptorText).filter(Boolean).slice(0, 30),
+          ...(context ? { context } : {})
         };
         Object.defineProperty(descriptor, 'localId', { value: localId, enumerable: false });
         return descriptor;
@@ -326,6 +373,10 @@
       pageFields: safePageFields,
       profileFields: safeProfileFields
     };
+  }
+
+  function isUnsupportedStandaloneDateComponent(label) {
+    return ['年', '月'].includes(normalizeLabel(label));
   }
 
   function isSafeDescriptorId(value) {
@@ -385,7 +436,7 @@
       if (typeof mapping.confidence !== 'number' || mapping.confidence < 0 || mapping.confidence > 1) {
         return { ok: false, error: 'invalid_confidence' };
       }
-      if (mapping.confidence < MIN_AI_MAPPING_CONFIDENCE) {
+      if (mapping.confidence <= MIN_AI_MAPPING_CONFIDENCE) {
         return { ok: false, error: 'low_confidence_mapping' };
       }
       const reasonCode = String(mapping.reasonCode || 'semantic_label_match');
@@ -422,7 +473,7 @@
     return Object.keys(value).every(key => allowedKeys.includes(key));
   }
 
-  // Preview only trusts known IDs and AI mappings at or above the confidence threshold.
+  // Preview only trusts known IDs and AI mappings strictly above the confidence threshold.
   function normalizeAiPreviewPlan({ candidate, pageFields, profileSchema, fingerprint = '' } = {}) {
     if (!candidate || !Array.isArray(candidate.mappings)) return { ok: false, error: 'invalid_mapping_plan' };
     const pageIds = new Set(pageFields.map(field => field.id));
@@ -432,7 +483,7 @@
         && pageIds.has(mapping.pageFieldId)
         && profileIds.has(mapping.profileFieldId)
         && Number.isFinite(mapping.confidence)
-        && mapping.confidence >= MIN_AI_MAPPING_CONFIDENCE
+        && mapping.confidence > MIN_AI_MAPPING_CONFIDENCE
         && mapping.confidence <= 1)
       .map(mapping => ({
         pageFieldId: mapping.pageFieldId,

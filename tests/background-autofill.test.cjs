@@ -133,6 +133,8 @@ test('AI mapping request uses anonymous IDs and restores them locally', async ()
   assert.equal(payload.includes('profile:作品[0].链接'), false);
   assert.equal(payload.includes('form:v1:abc123'), false);
   assert.doesNotMatch(harness.requests[0].messages[0].content, /0\.85|0\.95/);
+  assert.match(harness.requests[0].messages[0].content, /民族不能映射到性别/);
+  assert.match(harness.requests[0].messages[0].content, /context 是网页表单的父级标签路径/);
   assert.deepEqual(JSON.parse(JSON.stringify(response.plan.mappings)), [{
     pageFieldId: 'page-private-local-id',
     profileFieldId: 'profile:作品[0].链接',
@@ -186,7 +188,7 @@ test('read-only preview keeps repeated sources but leaves low or missing confide
     modelContent: '```json\n' + JSON.stringify({
       mappings: [
         { pageFieldId: 'page_0', profileFieldId: 'profile_0', confidence: 0.3 },
-        { pageFieldId: 'page_1', profileFieldId: 'profile_0', confidence: 0.85 },
+        { pageFieldId: 'page_1', profileFieldId: 'profile_0', confidence: 0.86 },
         { pageFieldId: 'page_2', profileFieldId: 'profile_0' },
         { pageFieldId: 'page_unknown', profileFieldId: 'profile_0' },
         { pageFieldId: 'page_3', profileFieldId: 'profile_unknown' }

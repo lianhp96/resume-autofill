@@ -7,6 +7,7 @@ const {
   buildAiMappingRequest,
   collectPageFields,
   MIN_AI_MAPPING_CONFIDENCE,
+  normalizeAiPreviewPlan,
   planAutofill,
   validateAiMappingPlan
 } = require('../autofill-planner.js');
@@ -397,6 +398,36 @@ test('collectPageFields uses a fieldset legend and drops labels containing a per
   ]);
 });
 
+test('collectPageFields adds only label-like ancestor context, never page values', () => {
+  const heading = { tagName: 'H3', textContent: '教育经历', children: [], getAttribute() { return null; } };
+  const fieldLabel = { tagName: 'DIV', className: 'form-item-label', textContent: '毕业院校', children: [], getAttribute() { return null; } };
+  const field = {
+    tagName: 'INPUT', type: 'text', value: '', disabled: false, readOnly: false, offsetParent: {},
+    getAttribute(name) { return { id: 'school', placeholder: '毕业院校' }[name] || null; },
+    closest() { return null; }
+  };
+  const populatedSibling = {
+    tagName: 'INPUT', type: 'text', value: '页面已有的隐私值', disabled: false, readOnly: false, offsetParent: {},
+    getAttribute(name) { return { id: 'private', placeholder: '个人信息', 'aria-label': '页面已有的隐私值' }[name] || null; },
+    closest() { return null; }
+  };
+  const item = { tagName: 'DIV', className: 'form-item', children: [fieldLabel, field, populatedSibling], getAttribute() { return null; } };
+  const group = { tagName: 'SECTION', children: [heading, item], getAttribute() { return null; } };
+  field.parentElement = item;
+  item.parentElement = group;
+  const doc = {
+    querySelectorAll(selector) {
+      if (selector === 'input, textarea, select') return [field, populatedSibling];
+      if (selector === 'label[for]') return [];
+      return [];
+    }
+  };
+
+  const fields = collectPageFields(doc);
+  assert.equal(fields[0].context, '教育经历');
+  assert.equal(JSON.stringify(fields).includes('页面已有的隐私值'), false);
+});
+
 test('buildAiMappingRequest contains only safe field descriptors, never source or page values', () => {
   const request = buildAiMappingRequest({
     fingerprint: 'form:v1:education',
@@ -450,6 +481,40 @@ test('buildAiMappingRequest keeps English contact fields out of the remote paylo
   });
 
   assert.deepEqual(request, { version: 1, pageFields: [], profileFields: [] });
+});
+
+test('buildAiMappingRequest includes label-only context and excludes standalone year/month fields', () => {
+  const request = buildAiMappingRequest({
+    pageFields: [
+      { id: 'page-year', label: '年', control: 'text', context: '教育经历 > 毕业时间' },
+      { id: 'page-month', label: '月', control: 'text', context: '教育经历 > 毕业时间' },
+      { id: 'page-school', label: '毕业院校', control: 'text', context: '教育经历', value: '页面已有的隐私值' }
+    ],
+    profileSchema: [{ id: 'profile-school', path: '教育经历[0].学校', label: '学校', kind: 'text', autofillClass: 'standard', value: '浙江大学' }]
+  });
+
+  assert.deepEqual(request.pageFields, [{
+    id: 'page_2', label: '毕业院校', control: 'text', required: false,
+    section: '', repeatIndex: null, options: [], context: '教育经历'
+  }]);
+  const serialized = JSON.stringify(request);
+  assert.equal(serialized.includes('页面已有的隐私值'), false);
+  assert.equal(serialized.includes('浙江大学'), false);
+  assert.equal(serialized.includes('毕业时间'), false);
+});
+
+test('normalizeAiPreviewPlan accepts confidence strictly above the threshold', () => {
+  const result = normalizeAiPreviewPlan({
+    pageFields: [{ id: 'page-threshold' }, { id: 'page-above-threshold' }],
+    profileSchema: [{ id: 'profile-name' }],
+    candidate: { mappings: [
+      { pageFieldId: 'page-threshold', profileFieldId: 'profile-name', confidence: MIN_AI_MAPPING_CONFIDENCE },
+      { pageFieldId: 'page-above-threshold', profileFieldId: 'profile-name', confidence: MIN_AI_MAPPING_CONFIDENCE + 0.01 }
+    ] }
+  });
+
+  assert.deepEqual(result.plan.mappings.map(mapping => mapping.pageFieldId), ['page-above-threshold']);
+  assert.deepEqual(result.plan.unmappedPageFieldIds, ['page-threshold']);
 });
 
 test('validateAiMappingPlan accepts only known, unique, compatible mappings', () => {
@@ -510,7 +575,7 @@ test('validateAiMappingPlan accepts only known, unique, compatible mappings', ()
   }), { ok: false, error: 'unknown_field_id' });
 });
 
-test('validateAiMappingPlan accepts its confidence threshold and rejects lower AI mappings', () => {
+test('validateAiMappingPlan requires confidence strictly above its threshold', () => {
   const pageFields = [{
     id: 'page-school', label: '毕业院校', control: 'text', required: true,
     section: '教育经历', repeatIndex: 0, options: []
@@ -530,12 +595,22 @@ test('validateAiMappingPlan accepts its confidence threshold and rejects lower A
     }
   }), { ok: false, error: 'low_confidence_mapping' });
 
-  assert.equal(validateAiMappingPlan({
+  assert.deepEqual(validateAiMappingPlan({
     pageFields,
     profileSchema,
     candidate: {
       version: 1,
       mappings: [{ pageFieldId: 'page-school', profileFieldId: 'profile-school', confidence: MIN_AI_MAPPING_CONFIDENCE, reasonCode: 'semantic_label_match' }],
+      unmappedPageFieldIds: []
+    }
+  }), { ok: false, error: 'low_confidence_mapping' });
+
+  assert.equal(validateAiMappingPlan({
+    pageFields,
+    profileSchema,
+    candidate: {
+      version: 1,
+      mappings: [{ pageFieldId: 'page-school', profileFieldId: 'profile-school', confidence: MIN_AI_MAPPING_CONFIDENCE + 0.01, reasonCode: 'semantic_label_match' }],
       unmappedPageFieldIds: []
     }
   }).ok, true);

@@ -300,11 +300,12 @@
             <div class="llm-log-header">
               <div>
                 <h2>LLM 调用日志</h2>
-                <p class="safety-desc">用于定位解析耗时、重复请求和接口错误。日志只保存诊断信息，不保存 API Key 或 JD 原文。</p>
+                <p class="safety-desc">用于定位解析耗时、重复请求和接口错误。字段映射日志会保存脱敏后的请求内容与模型原始响应，不保存 API Key 或资料值。</p>
               </div>
               <div class="llm-log-actions">
-                <button class="btn" id="refreshLlmLogsBtn">↻ 刷新</button>
-                <button class="btn btn-danger" id="clearLlmLogsBtn">清空日志</button>
+                <button class="btn" id="refreshLlmLogsBtn" type="button">↻ 刷新</button>
+                <button class="btn" id="exportLlmLogsBtn" type="button">导出 JSON</button>
+                <button class="btn btn-danger" id="clearLlmLogsBtn" type="button">清空日志</button>
               </div>
             </div>
             <div class="llm-log-summary" id="llmLogSummary">暂无调用日志</div>

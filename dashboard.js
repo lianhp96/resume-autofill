@@ -1471,6 +1471,11 @@ if (typeof document !== 'undefined') (() => {
     success: '成功',
     parse_error: 'JSON 解析失败',
     request_error: '请求失败',
+    timeout: '请求超时',
+    local_only: '本地匹配',
+    no_fields: '没有可映射字段',
+    validation_error: '映射校验失败',
+    rate_limited: '请求过于频繁',
     skipped: '未调用'
   };
 
@@ -1479,6 +1484,17 @@ if (typeof document !== 'undefined') (() => {
     el.className = className;
     el.textContent = text;
     return el;
+  }
+
+  function createLogPayload(label, content) {
+    const details = document.createElement('details');
+    details.className = 'llm-log-payload';
+    const summary = document.createElement('summary');
+    summary.textContent = label;
+    const pre = document.createElement('pre');
+    pre.textContent = content;
+    details.append(summary, pre);
+    return details;
   }
 
   function renderLlmLogs(logs) {
@@ -1490,7 +1506,7 @@ if (typeof document !== 'undefined') (() => {
       : '暂无调用日志';
 
     if (!list.length) {
-      llmLogList.appendChild(createLogText('llm-log-empty', '点击「一键收录」或「测试连接」后，调用记录会显示在这里。'));
+      llmLogList.appendChild(createLogText('llm-log-empty', '点击「一键收录」「生成 AI 字段映射」或「测试连接」后，调用记录会显示在这里。'));
       return;
     }
 
@@ -1501,7 +1517,7 @@ if (typeof document !== 'undefined') (() => {
       const main = document.createElement('div');
       main.className = 'llm-log-main';
       main.append(
-        createLogText('', log.kind === 'test' ? '连接测试' : '岗位解析'),
+        createLogText('', log.kind === 'test' ? '连接测试' : log.kind === 'autofill_plan' ? 'AI 字段映射' : '岗位解析'),
         createLogText('llm-log-status', llmLogStatusLabels[log.status] || log.status || '未知状态'),
         createLogText('', log.at ? new Date(log.at).toLocaleString() : '无时间')
       );
@@ -1517,24 +1533,43 @@ if (typeof document !== 'undefined') (() => {
         createLogText('', `解析：${log.parseMs ?? '-'} ms`),
         createLogText('', `输入：${log.inputChars ?? '-'} 字符`),
         createLogText('', `输出：${log.outputChars ?? '-'} 字符`),
-        createLogText('', `请求：${Array.isArray(log.attempts) ? log.attempts.length : 0} 次`)
+        createLogText('', `请求：${log.attemptCount ?? (Array.isArray(log.attempts) ? log.attempts.length : '-')} 次`)
       );
 
       entry.append(main, meta);
+      if (log.kind === 'autofill_plan') {
+        const confidenceMeta = document.createElement('div');
+        confidenceMeta.className = 'llm-log-meta';
+        confidenceMeta.textContent = `置信度阈值：${log.confidenceThreshold ?? '-'} · 候选映射：${log.candidateMappingCount ?? '-'} 项 · 通过阈值：${log.acceptedMappingCount ?? '-'} 项`;
+        entry.appendChild(confidenceMeta);
+      }
       if (log.clientTimings && Object.keys(log.clientTimings).length) {
         const client = document.createElement('div');
         client.className = 'llm-log-meta';
         client.textContent = `页面本地耗时：解析 ${log.clientTimings.localParseMs ?? '-'} ms · 读取配置 ${log.clientTimings.configReadMs ?? '-'} ms · 采集文本 ${log.clientTimings.textCollectMs ?? '-'} ms`;
         entry.appendChild(client);
       }
+      const attemptsHavePayload = (log.attempts || []).some(attempt => attempt.requestContent || attempt.responseContent);
       (log.attempts || []).forEach(attempt => {
         const attemptEl = document.createElement('div');
         attemptEl.className = 'llm-log-attempt';
         attemptEl.textContent = `第 ${attempt.attempt} 次${attempt.jsonMode ? '（JSON mode）' : ''}：${attempt.ok ? '成功' : (attempt.error || '失败')} · ${attempt.durationMs ?? '-'} ms · HTTP ${attempt.status ?? '-'}`;
         entry.appendChild(attemptEl);
+        if (typeof attempt.requestContent === 'string' && attempt.requestContent) {
+          entry.appendChild(createLogPayload(`第 ${attempt.attempt} 次发送内容`, attempt.requestContent));
+        }
+        if (typeof attempt.responseContent === 'string' && attempt.responseContent) {
+          entry.appendChild(createLogPayload(`第 ${attempt.attempt} 次返回内容`, attempt.responseContent));
+        }
       });
       if (log.error) {
         entry.appendChild(createLogText('llm-log-error', `错误：${log.error}`));
+      }
+      if (!attemptsHavePayload && typeof log.requestContent === 'string' && log.requestContent) {
+        entry.appendChild(createLogPayload('查看发送内容', log.requestContent));
+      }
+      if (!attemptsHavePayload && typeof log.responseContent === 'string' && log.responseContent) {
+        entry.appendChild(createLogPayload('查看返回内容', log.responseContent));
       }
       llmLogList.appendChild(entry);
     });
@@ -1545,6 +1580,19 @@ if (typeof document !== 'undefined') (() => {
   }
 
   $('#refreshLlmLogsBtn').addEventListener('click', loadLlmLogs);
+  $('#exportLlmLogsBtn').addEventListener('click', async () => {
+    const logs = (await storageGet(LLM_LOGS_STORAGE_KEY)) || [];
+    const exportedAt = new Date();
+    const blob = new Blob([JSON.stringify({ exportedAt: exportedAt.toISOString(), logs }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `job-assistant-llm-logs-${exportedAt.toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  });
   $('#clearLlmLogsBtn').addEventListener('click', async () => {
     if (!window.confirm('确定清空全部 LLM 调用日志吗？')) return;
     await storageSet(LLM_LOGS_STORAGE_KEY, []);

@@ -2,6 +2,20 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { buildAutofillPlanningPayload } = require('../content.js');
+const AutofillPlanner = require('../autofill-planner.js');
+
+test('preview includes contact field names without reading contact values', () => {
+  const details = {};
+  Object.defineProperty(details, '手机', { enumerable: true, get() { throw new Error('must not read value'); } });
+  const payload = buildAutofillPlanningPayload({
+    planner: AutofillPlanner,
+    documentRef: { querySelectorAll() { return []; } },
+    locationRef: { origin: 'https://example.test', pathname: '/' },
+    resume: { 基本信息: details }
+  });
+  assert.equal(payload.profileSchema[0].label, '手机');
+  assert.equal('value' in payload.profileSchema[0], false);
+});
 
 test('buildAutofillPlanningPayload sends value-free field descriptors to the planner endpoint', () => {
   const calls = [];

@@ -1091,6 +1091,33 @@ h1 {
   color: var(--red);
   word-break: break-word;
 }
+.llm-log-payload {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-soft);
+}
+.llm-log-payload summary {
+  padding: 7px 9px;
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+.llm-log-payload summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.llm-log-payload pre {
+  max-height: 320px;
+  margin: 0;
+  padding: 9px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 @media (max-width: 700px) {
   .stage-pill {
@@ -1100,6 +1127,7 @@ h1 {
   .llm-log-header {
     flex-direction: column;
   }
+  .llm-log-actions { flex-wrap: wrap; }
 }
 
 /* ================= 投递台账布局 =================

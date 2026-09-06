@@ -51,12 +51,12 @@ function resolveApplicationDate(detectedDate, heuristicDate, referenceDate = new
     || formatApplicationDate(reference.getFullYear(), reference.getMonth() + 1, reference.getDate());
 }
 
-function buildAutofillPlanningPayload({ planner, documentRef, locationRef, resume } = {}) {
+function buildAutofillPlanningPayload({ planner, documentRef, locationRef, resume, bindings } = {}) {
   if (!planner || typeof planner.collectPageFields !== 'function' || typeof planner.buildProfileSchema !== 'function' || typeof planner.buildFormFingerprint !== 'function') {
     throw new Error('自动填写规划模块不可用');
   }
-  const pageFields = planner.collectPageFields(documentRef);
-  const profileSchema = planner.buildProfileSchema(resume);
+  const pageFields = planner.collectPageFields(documentRef, bindings);
+  const profileSchema = planner.buildProfileSchema(resume, planner.PREVIEW_AUTOFILL_POLICY);
   return {
     fingerprint: planner.buildFormFingerprint({ location: locationRef, fields: pageFields }),
     pageFields,
@@ -443,12 +443,63 @@ if (typeof document !== 'undefined') (() => {
       border-top: 1px solid #d6e1f1;
     }
     .autofill-plan.hidden { display: none; }
-    .autofill-plan-summary {
+    .autofill-plan-summary,
+    .autofill-disclosure-summary {
       color: #38445c;
-      font-size: 11px;
       font-weight: 600;
       line-height: 1.45;
     }
+    .autofill-plan-summary,
+    .autofill-plan .autofill-disclosure-summary { font-size: 11px; }
+    .autofill-results .autofill-disclosure-summary { font-size: 12px; }
+    .autofill-disclosure-toggle {
+      width: 100%;
+      min-height: 44px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 28px;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .autofill-disclosure-toggle:hover .autofill-disclosure-arrow {
+      background: #e8eef9;
+      color: #1457d9;
+    }
+    .autofill-disclosure-toggle:focus-visible {
+      outline: 2px solid #2563eb;
+      outline-offset: 2px;
+    }
+    .autofill-disclosure-arrow {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #77839a;
+      font-size: 13px;
+      line-height: 1;
+      transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+    .autofill-disclosure-toggle[aria-expanded="false"] .autofill-disclosure-arrow {
+      transform: rotate(-90deg);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .autofill-disclosure-arrow { transition: none; }
+    }
+    .autofill-disclosure-details {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .autofill-disclosure-details[hidden] { display: none; }
     .autofill-plan-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -472,6 +523,11 @@ if (typeof document !== 'undefined') (() => {
       color: #1457d9;
       font-size: 10px;
     }
+    .autofill-fill { margin-top: 10px; min-height: 44px; }
+    .autofill-fill[hidden] { display: none; }
+    .autofill-results { font-size: 12px; line-height: 1.5; color: #38445c; overflow-wrap: anywhere; }
+    .autofill-results:not(:empty) { margin-top: 10px; }
+    .autofill-results p { margin: 0; }
 
     /* 快速微调确认表单 */
     .capture-form {
@@ -792,8 +848,10 @@ if (typeof document !== 'undefined') (() => {
           <button class="capture-btn" id="aja-plan-autofill-btn" type="button" aria-describedby="aja-autofill-hint">
             <span>生成 AI 字段映射</span>
           </button>
-          <p class="autofill-hint" id="aja-autofill-hint">仅发送页面字段和资料字段名称；不会向 AI 发送或向网页填写任何真实资料。</p>
+          <p class="autofill-hint" id="aja-autofill-hint">AI 只接收字段名称。生成映射后，点击「填写文本字段」在本地取值填写；已有内容会跳过。</p>
           <div class="autofill-plan hidden" id="aja-autofill-plan" aria-live="polite"></div>
+          <button class="capture-btn autofill-fill" id="aja-fill-text-btn" type="button" hidden>填写文本字段</button>
+          <div class="autofill-results" id="aja-fill-results" aria-live="polite"></div>
         </div>
 
         <!-- 简历资料库分类展示 -->
@@ -822,6 +880,11 @@ if (typeof document !== 'undefined') (() => {
   const scanBtn = shadow.getElementById('aja-scan-btn');
   const planAutofillBtn = shadow.getElementById('aja-plan-autofill-btn');
   const autofillPlanEl = shadow.getElementById('aja-autofill-plan');
+  const fillTextBtn = shadow.getElementById('aja-fill-text-btn');
+  const fillResultsEl = shadow.getElementById('aja-fill-results');
+  let mappingSession = null;
+  let mappingGeneration = 0;
+  let isFillingText = false;
   const captureForm = shadow.getElementById('aja-capture-form');
   const capCompany = shadow.getElementById('cap-company');
   const capPosition = shadow.getElementById('cap-position');
@@ -944,6 +1007,10 @@ if (typeof document !== 'undefined') (() => {
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName === 'local' && changes[RESUME_STORAGE_KEY]) {
         currentResumeData = changes[RESUME_STORAGE_KEY].newValue || DEFAULT_RESUME;
+        mappingGeneration += 1;
+        mappingSession = null;
+        fillTextBtn.hidden = true;
+        fillResultsEl.textContent = '资料库已更新，请重新生成映射。';
       }
       if (areaName === 'local' && changes[RESUME_PRIORITY_ORDER_STORAGE_KEY]) {
         priorityFieldOrder = Array.isArray(changes[RESUME_PRIORITY_ORDER_STORAGE_KEY].newValue)
@@ -1257,22 +1324,64 @@ if (typeof document !== 'undefined') (() => {
     if (llmUsed) showToast('🤖 已用 AI 识别岗位信息，请核对');
   });
 
+  function createAutofillDisclosure(container, { summaryText, detailsId, detailsLabel }) {
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'autofill-disclosure-toggle';
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.setAttribute('aria-controls', detailsId);
+    toggle.title = `收起${detailsLabel}`;
+
+    const summary = document.createElement('span');
+    summary.className = 'autofill-disclosure-summary';
+    summary.textContent = summaryText;
+    const arrow = document.createElement('span');
+    arrow.className = 'autofill-disclosure-arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = '▾';
+    toggle.append(summary, arrow);
+
+    const details = document.createElement('div');
+    details.id = detailsId;
+    details.className = 'autofill-disclosure-details';
+
+    toggle.addEventListener('click', () => {
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', String(!expanded));
+      toggle.title = `${expanded ? '展开' : '收起'}${detailsLabel}`;
+      details.hidden = expanded;
+    });
+
+    container.append(toggle, details);
+    return details;
+  }
+
   function renderAutofillPlan(plan, pageFields, profileSchema, { degraded = false, message = '' } = {}) {
     const pageById = new Map(pageFields.map(field => [field.id, field]));
     const profileById = new Map(profileSchema.map(field => [field.id, field]));
     autofillPlanEl.replaceChildren();
     autofillPlanEl.classList.remove('hidden');
 
-    const summary = document.createElement('div');
-    summary.className = 'autofill-plan-summary';
     const mappingCount = Array.isArray(plan?.mappings) ? plan.mappings.length : 0;
     const unmappedCount = Array.isArray(plan?.unmappedPageFieldIds) ? plan.unmappedPageFieldIds.length : 0;
-    summary.textContent = message && mappingCount === 0
+    const summaryText = message && mappingCount === 0
       ? message
       : degraded
-      ? `${message || 'AI 映射不可用'}；保留 ${mappingCount} 项本地匹配，${unmappedCount} 项待处理。`
-      : `已生成 ${mappingCount} 项映射，${unmappedCount} 项未映射。本阶段不会写入网页。`;
-    autofillPlanEl.appendChild(summary);
+      ? `${message || 'AI 映射不可用'}；${mappingCount} 项映射可用，${unmappedCount} 项保持未映射。`
+      : `已生成 ${mappingCount} 项映射，${unmappedCount} 项未映射。可点击下方按钮填写文本字段。`;
+    if (mappingCount === 0) {
+      const summary = document.createElement('div');
+      summary.className = 'autofill-plan-summary';
+      summary.textContent = summaryText;
+      autofillPlanEl.appendChild(summary);
+      return;
+    }
+
+    const details = createAutofillDisclosure(autofillPlanEl, {
+      summaryText,
+      detailsId: 'aja-autofill-plan-details',
+      detailsLabel: '映射明细'
+    });
 
     for (const mapping of Array.isArray(plan?.mappings) ? plan.mappings : []) {
       const row = document.createElement('div');
@@ -1287,35 +1396,50 @@ if (typeof document !== 'undefined') (() => {
       profileLabel.className = 'autofill-plan-source';
       profileLabel.textContent = `${profileById.get(mapping.profileFieldId)?.label || '未知资料字段'} · ${source}`;
       row.append(pageLabel, arrow, profileLabel);
-      autofillPlanEl.appendChild(row);
+      details.appendChild(row);
     }
   }
 
   planAutofillBtn.addEventListener('click', async () => {
+    if (planAutofillBtn.disabled || isFillingText) return;
     const originalHtml = planAutofillBtn.innerHTML;
+    const generation = ++mappingGeneration;
+    mappingSession = null;
+    fillTextBtn.hidden = true;
+    fillResultsEl.replaceChildren();
+    autofillPlanEl.replaceChildren();
+    planAutofillBtn.disabled = true;
+    planAutofillBtn.setAttribute('aria-busy', 'true');
+    planAutofillBtn.innerHTML = '<span>生成映射中...</span>';
     try {
       const planner = globalThis.AutofillPlanner;
       if (!planner) throw new Error('自动填写规划模块不可用');
       await loadResumeData();
+      const bindings = new Map();
+      const pageUrl = location.href;
       const payload = buildAutofillPlanningPayload({
         planner,
         documentRef: document,
         locationRef: location,
-        resume: currentResumeData
+        resume: currentResumeData,
+        bindings
       });
       if (payload.pageFields.length === 0) {
         renderAutofillPlan({ mappings: [], unmappedPageFieldIds: [] }, [], payload.profileSchema, { message: '当前页面没有可分析的空表单字段' });
         return;
       }
-      planAutofillBtn.disabled = true;
-      planAutofillBtn.setAttribute('aria-busy', 'true');
-      planAutofillBtn.innerHTML = '<span>生成映射中...</span>';
-      const result = await new Promise(resolve => {
-        chrome.runtime.sendMessage({ type: 'PLAN_AUTOFILL_LLM', ...payload }, resolve);
+      const result = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: 'PLAN_AUTOFILL_LLM', ...payload }, response => {
+          if (chrome.runtime.lastError) reject(new Error('扩展连接已断开，请刷新页面后重试'));
+          else resolve(response);
+        });
       });
+      if (generation !== mappingGeneration || location.href !== pageUrl) throw new Error('页面或资料库已变化，请重新生成映射');
       if (!result?.ok || !result.plan) throw new Error(result?.message || '生成映射失败');
+      mappingSession = { plan: result.plan, bindings, pageUrl, payload, generation };
+      fillTextBtn.hidden = !result.plan.mappings?.length;
       renderAutofillPlan(result.plan, payload.pageFields, payload.profileSchema, result);
-      showToast(result.degraded ? '已保留本地匹配结果' : '已生成字段映射计划');
+      showToast(result.degraded ? (result.message || '未生成字段映射') : '已生成字段映射计划');
     } catch (err) {
       console.warn('生成自动填写映射失败', err);
       renderAutofillPlan({ mappings: [], unmappedPageFieldIds: [] }, [], [], { degraded: true, message: err.message || '生成映射失败' });
@@ -1324,6 +1448,67 @@ if (typeof document !== 'undefined') (() => {
       planAutofillBtn.disabled = false;
       planAutofillBtn.removeAttribute('aria-busy');
       planAutofillBtn.innerHTML = originalHtml;
+    }
+  });
+
+  const fillReasonLabels = {
+    unknown_field: '找不到对应字段', conflicting_sources: '同一输入框有多个资料来源',
+    unsupported_control: '暂不支持此控件（仅填写文本）', field_changed: '页面或字段已变化，请重新生成映射',
+    existing_value: '已有内容，已跳过', missing_value: '资料为空或不是文本',
+    write_failed: '写入失败', value_mismatch: '网页未保留写入值'
+  };
+
+  fillTextBtn.addEventListener('click', async () => {
+    if (isFillingText || !mappingSession) return;
+    const session = mappingSession;
+    isFillingText = true;
+    fillTextBtn.disabled = true;
+    fillTextBtn.setAttribute('aria-busy', 'true');
+    fillTextBtn.textContent = '填写中...';
+    planAutofillBtn.disabled = true;
+    fillResultsEl.textContent = '正在填写文本字段并检查结果...';
+    try {
+      if (!globalThis.AutofillExecutor) throw new Error('请重新加载扩展并刷新页面');
+      const stored = await chrome.storage.local.get([RESUME_STORAGE_KEY]);
+      if (!stored[RESUME_STORAGE_KEY]) throw new Error('资料库为空，请先保存资料');
+      if (mappingSession !== session || location.href !== session.pageUrl) throw new Error('页面或资料库已变化，请重新生成映射');
+      const report = await globalThis.AutofillExecutor.executeTextMappings({
+        plan: session.plan,
+        bindings: session.bindings,
+        profileSchema: session.payload.profileSchema,
+        profile: stored[RESUME_STORAGE_KEY],
+        documentRef: document,
+        pageUrl: session.pageUrl,
+        isCurrentSession: () => mappingSession === session
+      });
+      fillResultsEl.replaceChildren();
+      const summaryText = `已填写 ${report.filled} 项，跳过 ${report.skipped} 项，失败 ${report.failed} 项。`;
+      const details = report.results.length > 0
+        ? createAutofillDisclosure(fillResultsEl, {
+          summaryText,
+          detailsId: 'aja-autofill-result-details',
+          detailsLabel: '填写明细'
+        })
+        : fillResultsEl;
+      if (report.results.length === 0) {
+        const summary = document.createElement('p');
+        summary.textContent = summaryText;
+        fillResultsEl.appendChild(summary);
+      }
+      const fields = new Map(session.payload.pageFields.map(field => [field.id, field]));
+      for (const result of report.results) {
+        const row = document.createElement('p');
+        row.textContent = `${fields.get(result.pageFieldId)?.label || '未知字段'}：${result.status === 'filled' ? '已填写' : fillReasonLabels[result.reason] || '未填写'}`;
+        details.appendChild(row);
+      }
+    } catch (err) {
+      fillResultsEl.textContent = err.message || '填写失败，请重新生成映射后重试';
+    } finally {
+      isFillingText = false;
+      fillTextBtn.disabled = false;
+      fillTextBtn.removeAttribute('aria-busy');
+      fillTextBtn.textContent = '填写文本字段';
+      planAutofillBtn.disabled = false;
     }
   });
 

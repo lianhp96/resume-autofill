@@ -11,6 +11,11 @@
   });
   const MAX_AI_MAPPING_ENTRIES = 128;
   const MIN_AI_MAPPING_CONFIDENCE = 0.85;
+  // Only used for read-only mapping previews; values remain outside the AI payload.
+  const PREVIEW_AUTOFILL_POLICY = Object.freeze({
+    neverAutofillPattern: /(?!)/,
+    confirmBeforeAutofillPattern: /(?!)/
+  });
 
   const FIELD_ALIASES = {
     '姓名': ['姓名', '中文名', '真实姓名', '申请人姓名'],
@@ -216,7 +221,8 @@
     };
   }
 
-  function collectPageFields(documentRef) {
+  function collectPageFields(documentRef, bindings) {
+    if (bindings) bindings.clear();
     if (!documentRef || typeof documentRef.querySelectorAll !== 'function') return [];
     const entries = [];
     const groups = new Map();
@@ -237,11 +243,23 @@
 
     return entries
       .filter(entry => !Array.isArray(entry) || !entry.some(isAlreadyFilled))
-      .map(entry => Array.isArray(entry)
+      .map(entry => ({ entry, field: Array.isArray(entry)
         ? describeChoiceGroup(entry, documentRef)
-        : describePageField(entry, documentRef))
-      .filter(field => Boolean(field.label))
-      .map((field, index) => ({ id: `page:${index}`, ...field }));
+        : describePageField(entry, documentRef) }))
+      .filter(({ field }) => Boolean(field.label))
+      .map(({ entry, field }, index) => {
+        const descriptor = { id: `page:${index}`, ...field };
+        // DOM references stay in this local registry, never in the descriptor payload.
+        if (bindings) bindings.set(descriptor.id, {
+          element: entry,
+          isCurrent() {
+            if (Array.isArray(entry) || !documentRef.contains(entry) || !isVisibleWritableControl(entry)) return false;
+            const current = describePageField(entry, documentRef);
+            return ['label', 'control', 'section', 'repeatIndex'].every(key => current[key] === field[key]);
+          }
+        });
+        return descriptor;
+      });
   }
 
   function stableHash(text) {
@@ -267,12 +285,12 @@
     return `form:v1:${stableHash(`${origin}${pathname}\n${fieldSignature}`)}`;
   }
 
-  function buildAiMappingRequest({ pageFields, profileSchema, policy = DEFAULT_AUTOFILL_POLICY } = {}) {
+  function buildAiMappingRequest({ pageFields, profileSchema, policy = DEFAULT_AUTOFILL_POLICY, previewOnly = false } = {}) {
     const safePageFields = (Array.isArray(pageFields) ? pageFields : [])
       .map((field, index) => {
         const label = sanitizeDescriptorText(field.label);
         const localId = String(field.id || '');
-        if (!label || !isSafeDescriptorId(localId) || classifyField(label, policy) !== 'standard') return null;
+        if (!label || !isSafeDescriptorId(localId) || (!previewOnly && classifyField(label, policy) !== 'standard')) return null;
         const descriptor = {
           id: `page_${index}`,
           label,
@@ -290,7 +308,7 @@
       .map((field, index) => {
         const label = sanitizeDescriptorText(field.label);
         const localId = String(field.id || '');
-        if (!label || !isSafeDescriptorId(localId) || field.autofillClass !== 'standard' || classifyField(label, policy) !== 'standard') return null;
+        if (!label || !isSafeDescriptorId(localId) || (!previewOnly && (field.autofillClass !== 'standard' || classifyField(label, policy) !== 'standard'))) return null;
         const descriptor = {
           id: `profile_${index}`,
           label,
@@ -404,6 +422,32 @@
     return Object.keys(value).every(key => allowedKeys.includes(key));
   }
 
+  // Preview only trusts known IDs and AI mappings at or above the confidence threshold.
+  function normalizeAiPreviewPlan({ candidate, pageFields, profileSchema, fingerprint = '' } = {}) {
+    if (!candidate || !Array.isArray(candidate.mappings)) return { ok: false, error: 'invalid_mapping_plan' };
+    const pageIds = new Set(pageFields.map(field => field.id));
+    const profileIds = new Set(profileSchema.map(field => field.id));
+    const mappings = candidate.mappings
+      .filter(mapping => mapping
+        && pageIds.has(mapping.pageFieldId)
+        && profileIds.has(mapping.profileFieldId)
+        && Number.isFinite(mapping.confidence)
+        && mapping.confidence >= MIN_AI_MAPPING_CONFIDENCE
+        && mapping.confidence <= 1)
+      .map(mapping => ({
+        pageFieldId: mapping.pageFieldId,
+        profileFieldId: mapping.profileFieldId,
+        confidence: mapping.confidence,
+        reasonCode: 'preview_match',
+        source: 'ai'
+      }));
+    const mappedIds = new Set(mappings.map(mapping => mapping.pageFieldId));
+    return { ok: true, plan: {
+      version: 1, previewOnly: true, fingerprint, mappings,
+      unmappedPageFieldIds: [...pageIds].filter(id => !mappedIds.has(id))
+    } };
+  }
+
   function inSameScope(pageField, profileField) {
     if (pageField.section && profileField.section && pageField.section !== profileField.section) return false;
     if (pageField.repeatIndex !== null && pageField.repeatIndex !== undefined) {
@@ -460,12 +504,14 @@
 
   return {
     DEFAULT_AUTOFILL_POLICY,
+    PREVIEW_AUTOFILL_POLICY,
     MIN_AI_MAPPING_CONFIDENCE,
     buildAiMappingRequest,
     buildProfileSchema,
     buildFormFingerprint,
     collectPageFields,
     planAutofill,
+    normalizeAiPreviewPlan,
     validateAiMappingPlan
   };
 });

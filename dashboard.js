@@ -71,7 +71,7 @@ if (typeof document !== 'undefined') (() => {
   // ================= 常量定义 =================
   const STAGES = ['待投递', '已投递', '已测评', '笔试', '一面', '二面', 'HR面', 'Offer', '简历挂', '已结束'];
   const STAGE_ADVANCE_ORDER = ['待投递', '已投递', '已测评', '笔试', '一面', '二面', 'HR面', 'Offer', '已结束'];
-  const RESUME_SECTION_ORDER = ['优先信息', '基本信息', '教育经历', '实习经历', '项目经历', '竞赛与技能'];
+  const RESUME_SECTION_ORDER = ['优先信息', '基本信息', '网申补充信息', '教育经历', '家庭状况', '实习经历', '项目经历', '竞赛与技能'];
   const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
   const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
   const RESUME_PRIORITY_ORDER_STORAGE_KEY = 'autumnRecruitmentTracker.resume.priorityOrder.v1';
@@ -80,8 +80,13 @@ if (typeof document !== 'undefined') (() => {
   const LLM_LOGS_STORAGE_KEY = 'autumnRecruitmentTracker.llmLogs.v1';
   const APP_VERSION = '1.0';
 
+  const RESUME_TEMPLATE = window.ResumeTemplate || {
+    applyOnlineApplicationTemplate: resume => resume,
+    createFamilyMemberTemplate: () => ({ _rowName: '家庭成员' })
+  };
+
   // 默认示例简历种子
-  const DEFAULT_RESUME = {
+  const DEFAULT_RESUME = RESUME_TEMPLATE.applyOnlineApplicationTemplate({
     "优先信息": {
       "身份证": "110101199801011234",
       "手机": "13800138000",
@@ -151,7 +156,7 @@ if (typeof document !== 'undefined') (() => {
       "专业技能": "Python, SQL, Figma, Axure, Prompt Engineering, Agent Architecture",
       "学术竞赛": "全国大学生数学建模竞赛一等奖、互联网+大学生创新创业大赛银奖"
     }
-  };
+  });
 
   // 默认示例投递记录
   function getExampleRecords() {
@@ -734,10 +739,9 @@ if (typeof document !== 'undefined') (() => {
       storageGet(RESUME_STORAGE_KEY),
       storageGet(RESUME_PRIORITY_ORDER_STORAGE_KEY)
     ]);
-    if (saved && typeof saved === 'object') {
-      currentResume = saved;
-    } else {
-      currentResume = DEFAULT_RESUME;
+    const storedResume = saved && typeof saved === 'object' ? saved : DEFAULT_RESUME;
+    currentResume = RESUME_TEMPLATE.applyOnlineApplicationTemplate(storedResume);
+    if (!saved || JSON.stringify(currentResume) !== JSON.stringify(storedResume)) {
       await storageSet(RESUME_STORAGE_KEY, currentResume);
     }
     priorityFieldOrder = Array.isArray(savedPriorityOrder)
@@ -760,7 +764,7 @@ if (typeof document !== 'undefined') (() => {
 
   function renderResumeEditor() {
     // 渲染 KV 区域：优先信息、基本信息、竞赛与技能
-    ['优先信息', '基本信息', '竞赛与技能'].forEach(sec => {
+    ['优先信息', '基本信息', '网申补充信息', '竞赛与技能'].forEach(sec => {
       const container = $(`#kv-${sec}`);
       if (!container) return;
       const data = currentResume[sec] || {};
@@ -769,15 +773,15 @@ if (typeof document !== 'undefined') (() => {
       container.innerHTML = entries.map(([k, v]) => `
         <div class="kv-row" data-section="${sec}">
           ${isPrioritySection ? '<button type="button" class="kv-drag-handle" title="拖动调整顺序" aria-label="拖动调整字段顺序">::</button>' : ''}
-          <input type="text" class="kv-key" value="${escapeHtml(k)}" placeholder="字段名称">
-          <input type="text" class="kv-val" value="${escapeHtml(v)}" placeholder="内容值">
+          <input type="text" class="kv-key" value="${escapeHtml(k)}" placeholder="字段名称" aria-label="${escapeHtml(sec)}字段名称">
+          <input type="text" class="kv-val" value="${escapeHtml(v)}" placeholder="内容值" aria-label="${escapeHtml(k)}内容值">
           <button type="button" class="kv-del-btn" data-action="del-kv" title="删除字段">✕</button>
         </div>
       `).join('');
     });
 
     // 渲染经历列表：教育经历、实习经历、项目经历
-    ['教育经历', '实习经历', '项目经历'].forEach(sec => {
+    ['教育经历', '家庭状况', '实习经历', '项目经历'].forEach(sec => {
       const container = $(`#exp-${sec}`);
       if (!container) return;
       const list = Array.isArray(currentResume[sec]) ? currentResume[sec] : [];
@@ -821,8 +825,8 @@ if (typeof document !== 'undefined') (() => {
     row.setAttribute('data-section', sec);
     row.innerHTML = `
       ${sec === '优先信息' ? '<button type="button" class="kv-drag-handle" title="拖动调整顺序" aria-label="拖动调整字段顺序">::</button>' : ''}
-      <input type="text" class="kv-key" placeholder="新字段名称">
-      <input type="text" class="kv-val" placeholder="内容值">
+      <input type="text" class="kv-key" placeholder="新字段名称" aria-label="${escapeHtml(sec)}新字段名称">
+      <input type="text" class="kv-val" placeholder="内容值" aria-label="新字段内容值">
       <button type="button" class="kv-del-btn" data-action="del-kv" title="删除字段">✕</button>
     `;
     container.appendChild(row);
@@ -846,9 +850,18 @@ if (typeof document !== 'undefined') (() => {
         { k: '学院', label: '学院', val: '' },
         { k: '专业', label: '专业', val: '' },
         { k: '学历', label: '学历', val: '本科/硕士' },
+        { k: '学位', label: '学位', val: '学士/硕士' },
         { k: '开始时间', label: '开始时间', val: '2023-09' },
-        { k: '结束时间', label: '结束时间', val: '2026-06' }
+        { k: '结束时间', label: '结束时间', val: '2026-06' },
+        { k: 'GPA', label: 'GPA', val: '' },
+        { k: '专业排名', label: '专业排名', val: '' }
       ];
+    } else if (sec === '家庭状况') {
+      defaultFields = Object.entries(RESUME_TEMPLATE.createFamilyMemberTemplate()).map(([k, val]) => ({
+        k,
+        label: k === '_rowName' ? '成员标签' : k,
+        val
+      }));
     } else if (sec === '实习经历') {
       defaultFields = [
         { k: '_rowName', label: '经历标签', val: '实习单位简写' },
@@ -1021,7 +1034,7 @@ if (typeof document !== 'undefined') (() => {
     const updated = {};
 
     // 收集 KV
-    ['优先信息', '基本信息', '竞赛与技能'].forEach(sec => {
+    ['优先信息', '基本信息', '网申补充信息', '竞赛与技能'].forEach(sec => {
       updated[sec] = {};
       const rows = $$(`#kv-${sec} .kv-row`);
       rows.forEach(r => {
@@ -1032,7 +1045,7 @@ if (typeof document !== 'undefined') (() => {
     });
 
     // 收集经历
-    ['教育经历', '实习经历', '项目经历'].forEach(sec => {
+    ['教育经历', '家庭状况', '实习经历', '项目经历'].forEach(sec => {
       updated[sec] = [];
       const cards = $$(`#exp-${sec} .exp-item-card`);
       cards.forEach(card => {
@@ -1088,7 +1101,7 @@ if (typeof document !== 'undefined') (() => {
       try {
         const parsed = JSON.parse(evt.target.result);
         if (parsed && typeof parsed === 'object') {
-          currentResume = parsed;
+          currentResume = RESUME_TEMPLATE.applyOnlineApplicationTemplate(parsed);
           priorityFieldOrder = Object.keys(currentResume['优先信息'] || {});
           await storageSet(RESUME_STORAGE_KEY, currentResume);
           await storageSet(RESUME_PRIORITY_ORDER_STORAGE_KEY, priorityFieldOrder);

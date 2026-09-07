@@ -80,7 +80,7 @@ if (typeof document !== 'undefined') (() => {
   const SETTINGS_STORAGE_KEY = 'autumnRecruitmentTracker.settings.v1';
   const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
   const VALID_STAGES = ['待投递', '已投递', '已测评', '笔试', '一面', '二面', 'HR面', 'Offer', '简历挂', '已结束'];
-  const RESUME_SECTION_ORDER = ['优先信息', '基本信息', '教育经历', '实习经历', '项目经历', '竞赛与技能'];
+  const RESUME_SECTION_ORDER = ['优先信息', '基本信息', '网申补充信息', '教育经历', '家庭状况', '实习经历', '项目经历', '竞赛与技能'];
 
   // ================= 默认简历备用种子数据 =================
   const DEFAULT_RESUME = {

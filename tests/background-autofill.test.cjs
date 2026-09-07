@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const { webcrypto } = require('node:crypto');
 
 const AutofillPlanner = require('../autofill-planner.js');
+const ResumeTemplate = require('../resume-template.js');
 const source = fs.readFileSync(path.join(__dirname, '..', 'background.js'), 'utf8');
 const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
 
@@ -61,7 +62,7 @@ function createBackgroundHarness({ modelContent, stallUntilAbort = false, failJs
     crypto: webcrypto,
     importScripts() {},
     performance,
-    self: { AutofillPlanner, crypto: webcrypto },
+    self: { AutofillPlanner, ResumeTemplate, crypto: webcrypto },
     setTimeout(callback, delay) {
       timeoutBudgets.push(delay);
       return setTimeout(callback, stallUntilAbort ? 0 : delay);

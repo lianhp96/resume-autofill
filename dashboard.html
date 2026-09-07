@@ -177,6 +177,15 @@
             <div class="kv-container" id="kv-基本信息"></div>
           </div>
 
+          <!-- 网申补充信息 -->
+          <div class="editor-card full-col" id="card-application-extra">
+            <div class="editor-card-head">
+              <h3>网申补充信息 <span>常见招聘表单字段，请按实际情况填写</span></h3>
+              <button type="button" class="btn-sm" data-action="add-kv" data-section="网申补充信息">+ 添加字段</button>
+            </div>
+            <div class="kv-container" id="kv-网申补充信息"></div>
+          </div>
+
           <!-- 教育经历 -->
           <div class="editor-card full-col" id="card-edu">
             <div class="editor-card-head">
@@ -184,6 +193,15 @@
               <button type="button" class="btn-sm" data-action="add-exp" data-section="教育经历">+ 添加教育经历</button>
             </div>
             <div class="exp-container" id="exp-教育经历"></div>
+          </div>
+
+          <!-- 家庭状况 -->
+          <div class="editor-card full-col" id="card-family">
+            <div class="editor-card-head">
+              <h3>家庭状况 <span>按成员逐条维护，便于匹配家庭信息表单</span></h3>
+              <button type="button" class="btn-sm" data-action="add-exp" data-section="家庭状况">+ 添加家庭成员</button>
+            </div>
+            <div class="exp-container" id="exp-家庭状况"></div>
           </div>
 
           <!-- 实习经历 -->
@@ -433,6 +451,7 @@
   <div class="toast" id="globalToast" role="status"></div>
 
   <!-- 看板核心逻辑 -->
+  <script src="resume-template.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>

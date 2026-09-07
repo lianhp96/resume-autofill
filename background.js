@@ -2,19 +2,20 @@
  * 网申投递助手 - Background Service Worker
  */
 
-if (typeof importScripts === 'function') importScripts('autofill-planner.js');
+if (typeof importScripts === 'function') importScripts('autofill-planner.js', 'resume-template.js');
 
 const RECORDS_STORAGE_KEY = 'autumnRecruitmentTracker.records.v1';
 const RESUME_STORAGE_KEY = 'autumnRecruitmentTracker.resume.v1';
 const LLM_STORAGE_KEY = 'autumnRecruitmentTracker.llm.v1';
 const LLM_LOGS_STORAGE_KEY = 'autumnRecruitmentTracker.llmLogs.v1';
 const AUTOFILL_PLANNER = self.AutofillPlanner;
+const RESUME_TEMPLATE = self.ResumeTemplate || { applyOnlineApplicationTemplate: resume => resume };
 const AUTOFILL_LLM_TIMEOUT_MS = 30000;
 const LLM_LOG_MAX_ENTRIES = 50;
 const LLM_LOG_MAX_BYTES = 4 * 1024 * 1024;
 
 // 初始默认示例简历数据
-const DEFAULT_RESUME_DATA = {
+const DEFAULT_RESUME_DATA = RESUME_TEMPLATE.applyOnlineApplicationTemplate({
   "优先信息": {
     "身份证": "110101199801011234",
     "手机": "13800138000",
@@ -84,7 +85,7 @@ const DEFAULT_RESUME_DATA = {
     "专业技能": "Python, SQL, Figma, Axure, Prompt Engineering, Agent Architecture",
     "学术竞赛": "全国大学生数学建模竞赛一等奖、互联网+大学生创新创业大赛银奖"
   }
-};
+});
 
 // 打开或聚焦 Dashboard
 async function openOrFocusDashboard(targetHash = '') {
@@ -113,8 +114,9 @@ async function openOrFocusDashboard(targetHash = '') {
 chrome.runtime.onInstalled.addListener(async (details) => {
   try {
     const data = await chrome.storage.local.get([RESUME_STORAGE_KEY]);
-    if (!data[RESUME_STORAGE_KEY]) {
-      await chrome.storage.local.set({ [RESUME_STORAGE_KEY]: DEFAULT_RESUME_DATA });
+    const resume = RESUME_TEMPLATE.applyOnlineApplicationTemplate(data[RESUME_STORAGE_KEY] || DEFAULT_RESUME_DATA);
+    if (!data[RESUME_STORAGE_KEY] || JSON.stringify(resume) !== JSON.stringify(data[RESUME_STORAGE_KEY])) {
+      await chrome.storage.local.set({ [RESUME_STORAGE_KEY]: resume });
     }
   } catch (err) {
     console.error('初始化简历默认数据失败', err);
@@ -548,7 +550,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const res = await chrome.storage.local.get([RESUME_STORAGE_KEY]);
-        const resume = res[RESUME_STORAGE_KEY] || DEFAULT_RESUME_DATA;
+        const storedResume = res[RESUME_STORAGE_KEY] || DEFAULT_RESUME_DATA;
+        const resume = RESUME_TEMPLATE.applyOnlineApplicationTemplate(storedResume);
+        if (JSON.stringify(resume) !== JSON.stringify(storedResume)) {
+          await chrome.storage.local.set({ [RESUME_STORAGE_KEY]: resume });
+        }
         sendResponse({ ok: true, data: resume });
       } catch (err) {
         sendResponse({ ok: false, data: DEFAULT_RESUME_DATA });

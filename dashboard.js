@@ -53,6 +53,23 @@ function transitionRecordTodo(record, nextStatus, timestamp = Date.now()) {
   return next;
 }
 
+function createSingleLlmLogExport(log, exportedAt = new Date()) {
+  const exportTime = new Date(exportedAt);
+  const timestamp = Number.isFinite(exportTime.getTime()) ? exportTime : new Date();
+  return {
+    exportedAt: timestamp.toISOString(),
+    scope: 'single',
+    logs: [log]
+  };
+}
+
+function getSingleLlmLogExportFilename(log, exportedAt = new Date()) {
+  const exportTime = new Date(exportedAt);
+  const timestamp = Number.isFinite(exportTime.getTime()) ? exportTime : new Date();
+  const kind = String(log?.kind || 'request').replace(/[^a-z0-9_-]/gi, '-').slice(0, 32) || 'request';
+  return `job-assistant-llm-log-${kind}-${timestamp.toISOString().replace(/[:.]/g, '-')}.json`;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     TODO_STATUS,
@@ -61,7 +78,9 @@ if (typeof module !== 'undefined' && module.exports) {
     isRecordVisibleUpcoming,
     matchesPipelineFilter,
     compareUpcomingRecords,
-    transitionRecordTodo
+    transitionRecordTodo,
+    createSingleLlmLogExport,
+    getSingleLlmLogExportFilename
   };
 }
 
@@ -1510,6 +1529,26 @@ if (typeof document !== 'undefined') (() => {
     return details;
   }
 
+  function downloadJson(payload, filename) {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function exportSingleLlmLog(log) {
+    const exportedAt = new Date();
+    downloadJson(
+      createSingleLlmLogExport(log, exportedAt),
+      getSingleLlmLogExportFilename(log, exportedAt)
+    );
+  }
+
   function renderLlmLogs(logs) {
     const list = Array.isArray(logs) ? logs : [];
     llmLogList.replaceChildren();
@@ -1535,6 +1574,16 @@ if (typeof document !== 'undefined') (() => {
         createLogText('', log.at ? new Date(log.at).toLocaleString() : '无时间')
       );
 
+      const entryHeader = document.createElement('div');
+      entryHeader.className = 'llm-log-entry-header';
+      const exportButton = document.createElement('button');
+      exportButton.type = 'button';
+      exportButton.className = 'btn-sm llm-log-export';
+      exportButton.textContent = '导出本次 JSON';
+      exportButton.setAttribute('aria-label', `导出${log.kind === 'test' ? '连接测试' : log.kind === 'autofill_plan' ? 'AI 字段映射' : '岗位解析'}日志 JSON`);
+      exportButton.addEventListener('click', () => exportSingleLlmLog(log));
+      entryHeader.append(main, exportButton);
+
       const meta = document.createElement('div');
       meta.className = 'llm-log-meta';
       meta.append(
@@ -1549,7 +1598,7 @@ if (typeof document !== 'undefined') (() => {
         createLogText('', `请求：${log.attemptCount ?? (Array.isArray(log.attempts) ? log.attempts.length : '-')} 次`)
       );
 
-      entry.append(main, meta);
+      entry.append(entryHeader, meta);
       if (log.kind === 'autofill_plan') {
         const confidenceMeta = document.createElement('div');
         confidenceMeta.className = 'llm-log-meta';
@@ -1596,15 +1645,10 @@ if (typeof document !== 'undefined') (() => {
   $('#exportLlmLogsBtn').addEventListener('click', async () => {
     const logs = (await storageGet(LLM_LOGS_STORAGE_KEY)) || [];
     const exportedAt = new Date();
-    const blob = new Blob([JSON.stringify({ exportedAt: exportedAt.toISOString(), logs }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `job-assistant-llm-logs-${exportedAt.toISOString().replace(/[:.]/g, '-')}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    downloadJson(
+      { exportedAt: exportedAt.toISOString(), logs },
+      `job-assistant-llm-logs-${exportedAt.toISOString().replace(/[:.]/g, '-')}.json`
+    );
   });
   $('#clearLlmLogsBtn').addEventListener('click', async () => {
     if (!window.confirm('确定清空全部 LLM 调用日志吗？')) return;

@@ -1064,6 +1064,16 @@ h1 {
   color: var(--ink);
   font-weight: 700;
 }
+.llm-log-entry-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.llm-log-export {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .llm-log-meta,
 .llm-log-attempt {
   margin-top: 5px;
@@ -1128,6 +1138,7 @@ h1 {
     flex-direction: column;
   }
   .llm-log-actions { flex-wrap: wrap; }
+  .llm-log-entry-header { flex-wrap: wrap; }
 }
 
 /* ================= 投递台账布局 =================
